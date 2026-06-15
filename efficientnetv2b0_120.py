@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import random
+from typing import Iterable
 
 import numpy as np
 import torch
@@ -12,6 +13,11 @@ import torch
 
 IMAGE_SIZE = 120
 CLASS_NAMES = ("benign", "malignant")
+LABEL_ALIASES = {
+    "benign": ("benign", "normal", "negative"),
+    "malignant": ("malignant", "abnormal", "tumor", "positive"),
+}
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp"}
 
 
 @dataclass(frozen=True)
@@ -34,3 +40,32 @@ def seed_everything(seed: int) -> None:
     torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
+
+
+def _candidate_label_dirs(data_dir: Path, aliases: Iterable[str]) -> list[Path]:
+    candidates: list[Path] = []
+    for alias in aliases:
+        candidates.extend(data_dir.glob(alias))
+        candidates.extend(data_dir.glob(alias.capitalize()))
+        candidates.extend(data_dir.glob(alias.upper()))
+    return [path for path in candidates if path.is_dir()]
+
+
+def discover_image_paths(data_dir: Path) -> tuple[list[Path], list[int]]:
+    image_paths: list[Path] = []
+    labels: list[int] = []
+
+    for label_index, class_name in enumerate(CLASS_NAMES):
+        class_dirs = _candidate_label_dirs(data_dir, LABEL_ALIASES[class_name])
+        for class_dir in class_dirs:
+            for image_path in sorted(class_dir.rglob("*")):
+                if image_path.suffix.lower() in IMAGE_EXTENSIONS:
+                    image_paths.append(image_path)
+                    labels.append(label_index)
+
+    if not image_paths:
+        raise FileNotFoundError(
+            f"No images found under {data_dir}. Expected class folders like Normal/Abnormal."
+        )
+
+    return image_paths, labels
