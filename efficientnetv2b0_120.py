@@ -12,6 +12,7 @@ import torch
 from PIL import Image
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
+from torchvision import transforms
 
 
 IMAGE_SIZE = 120
@@ -21,6 +22,8 @@ LABEL_ALIASES = {
     "malignant": ("malignant", "abnormal", "tumor", "positive"),
 }
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp"}
+IMAGENET_MEAN = (0.485, 0.456, 0.406)
+IMAGENET_STD = (0.229, 0.224, 0.225)
 
 
 @dataclass(frozen=True)
@@ -105,4 +108,27 @@ def stratified_split(
         test_size=validation_size,
         random_state=seed,
         stratify=labels,
+    )
+
+
+def build_transforms(train: bool) -> transforms.Compose:
+    if train:
+        return transforms.Compose(
+            [
+                transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
+                transforms.RandomHorizontalFlip(),
+                transforms.RandomVerticalFlip(),
+                transforms.RandomRotation(degrees=20),
+                transforms.ColorJitter(brightness=0.15, contrast=0.15, saturation=0.05),
+                transforms.ToTensor(),
+                transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
+            ]
+        )
+
+    return transforms.Compose(
+        [
+            transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
+            transforms.ToTensor(),
+            transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
+        ]
     )
