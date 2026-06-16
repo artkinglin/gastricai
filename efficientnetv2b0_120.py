@@ -9,9 +9,11 @@ from typing import Iterable
 
 import numpy as np
 import torch
+from torch import nn
 from PIL import Image
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
+from torchvision import models
 from torchvision import transforms
 
 
@@ -37,6 +39,7 @@ class TrainConfig:
     validation_size: float = 0.2
     seed: int = 42
     num_workers: int = 2
+    pretrained: bool = True
 
 
 def seed_everything(seed: int) -> None:
@@ -132,3 +135,14 @@ def build_transforms(train: bool) -> transforms.Compose:
             transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
         ]
     )
+
+
+def build_model(pretrained: bool = True) -> nn.Module:
+    weights = models.EfficientNet_V2_B0_Weights.DEFAULT if pretrained else None
+    model = models.efficientnet_v2_b0(weights=weights)
+    in_features = model.classifier[1].in_features
+    model.classifier = nn.Sequential(
+        nn.Dropout(p=0.3, inplace=True),
+        nn.Linear(in_features, len(CLASS_NAMES)),
+    )
+    return model
