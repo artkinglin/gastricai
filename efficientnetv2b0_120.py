@@ -10,6 +10,7 @@ from typing import Iterable
 import numpy as np
 import torch
 from PIL import Image
+from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 
 
@@ -90,3 +91,18 @@ class GastricImageDataset(Dataset):
             image = self.transform(image)
         label = torch.tensor(self.labels[index], dtype=torch.long)
         return image, label
+
+
+def stratified_split(
+    image_paths: list[Path],
+    labels: list[int],
+    validation_size: float,
+    seed: int,
+) -> tuple[list[Path], list[Path], list[int], list[int]]:
+    return train_test_split(
+        image_paths,
+        labels,
+        test_size=validation_size,
+        random_state=seed,
+        stratify=labels,
+    )
