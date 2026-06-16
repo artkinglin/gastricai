@@ -9,6 +9,8 @@ from typing import Iterable
 
 import numpy as np
 import torch
+from PIL import Image
+from torch.utils.data import Dataset
 
 
 IMAGE_SIZE = 120
@@ -69,3 +71,22 @@ def discover_image_paths(data_dir: Path) -> tuple[list[Path], list[int]]:
         )
 
     return image_paths, labels
+
+
+class GastricImageDataset(Dataset):
+    def __init__(self, image_paths: list[Path], labels: list[int], transform=None) -> None:
+        if len(image_paths) != len(labels):
+            raise ValueError("image_paths and labels must have the same length")
+        self.image_paths = image_paths
+        self.labels = labels
+        self.transform = transform
+
+    def __len__(self) -> int:
+        return len(self.image_paths)
+
+    def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor]:
+        image = Image.open(self.image_paths[index]).convert("RGB")
+        if self.transform is not None:
+            image = self.transform(image)
+        label = torch.tensor(self.labels[index], dtype=torch.long)
+        return image, label
