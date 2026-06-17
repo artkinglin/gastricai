@@ -146,3 +146,11 @@ def build_model(pretrained: bool = True) -> nn.Module:
         nn.Linear(in_features, len(CLASS_NAMES)),
     )
     return model
+
+
+def class_weights(labels: list[int], device: torch.device) -> torch.Tensor:
+    counts = np.bincount(labels, minlength=len(CLASS_NAMES)).astype(np.float32)
+    if np.any(counts == 0):
+        raise ValueError(f"Every class must have at least one sample, got counts={counts.tolist()}")
+    weights = counts.sum() / (len(CLASS_NAMES) * counts)
+    return torch.tensor(weights, dtype=torch.float32, device=device)
