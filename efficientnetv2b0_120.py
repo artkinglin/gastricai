@@ -11,6 +11,7 @@ import numpy as np
 import torch
 from torch import nn
 from PIL import Image
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, roc_auc_score
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 from torchvision import models
@@ -154,3 +155,18 @@ def class_weights(labels: list[int], device: torch.device) -> torch.Tensor:
         raise ValueError(f"Every class must have at least one sample, got counts={counts.tolist()}")
     weights = counts.sum() / (len(CLASS_NAMES) * counts)
     return torch.tensor(weights, dtype=torch.float32, device=device)
+
+
+def compute_metrics(labels: list[int], probabilities: list[float], threshold: float = 0.5) -> dict[str, float]:
+    predictions = [1 if probability >= threshold else 0 for probability in probabilities]
+    metrics = {
+        "accuracy": accuracy_score(labels, predictions),
+        "f1": f1_score(labels, predictions, zero_division=0),
+        "precision": precision_score(labels, predictions, zero_division=0),
+        "recall": recall_score(labels, predictions, zero_division=0),
+    }
+    if len(set(labels)) == 2:
+        metrics["roc_auc"] = roc_auc_score(labels, probabilities)
+    else:
+        metrics["roc_auc"] = float("nan")
+    return metrics
