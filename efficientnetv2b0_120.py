@@ -13,7 +13,7 @@ from torch import nn
 from PIL import Image
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, roc_auc_score
 from sklearn.model_selection import train_test_split
-from torch.utils.data import Dataset
+from torch.utils.data import DataLoader, Dataset
 from torchvision import models
 from torchvision import transforms
 
@@ -170,3 +170,19 @@ def compute_metrics(labels: list[int], probabilities: list[float], threshold: fl
     else:
         metrics["roc_auc"] = float("nan")
     return metrics
+
+
+@torch.no_grad()
+def evaluate(model: nn.Module, loader: DataLoader, device: torch.device, threshold: float = 0.5) -> dict[str, float]:
+    model.eval()
+    labels: list[int] = []
+    probabilities: list[float] = []
+
+    for images, targets in loader:
+        images = images.to(device)
+        logits = model(images)
+        batch_probabilities = torch.softmax(logits, dim=1)[:, 1]
+        probabilities.extend(batch_probabilities.cpu().tolist())
+        labels.extend(targets.tolist())
+
+    return compute_metrics(labels, probabilities, threshold=threshold)
