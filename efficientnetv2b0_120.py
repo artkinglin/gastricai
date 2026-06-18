@@ -186,3 +186,32 @@ def evaluate(model: nn.Module, loader: DataLoader, device: torch.device, thresho
         labels.extend(targets.tolist())
 
     return compute_metrics(labels, probabilities, threshold=threshold)
+
+
+def train_one_epoch(
+    model: nn.Module,
+    loader: DataLoader,
+    criterion: nn.Module,
+    optimizer: torch.optim.Optimizer,
+    device: torch.device,
+) -> float:
+    model.train()
+    running_loss = 0.0
+    seen = 0
+
+    for images, targets in loader:
+        images = images.to(device)
+        targets = targets.to(device)
+
+        optimizer.zero_grad(set_to_none=True)
+        logits = model(images)
+        loss = criterion(logits, targets)
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        optimizer.step()
+
+        batch_size = images.size(0)
+        running_loss += loss.item() * batch_size
+        seen += batch_size
+
+    return running_loss / max(seen, 1)
