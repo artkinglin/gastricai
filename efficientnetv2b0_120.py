@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import json
 import random
 from typing import Iterable
 
@@ -215,3 +216,68 @@ def train_one_epoch(
         seen += batch_size
 
     return running_loss / max(seen, 1)
+
+
+def train(config: TrainConfig) -> dict[str, float]:
+    seed_everything(config.seed)
+    config.output_dir.mkdir(parents=True, exist_ok=True)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    image_paths, labels = discover_image_paths(config.data_dir)
+    train_paths, val_paths, train_labels, val_labels = stratified_split(
+        image_paths,
+        labels,
+        config.validation_size,
+        config.seed,
+    )
+
+    train_dataset = GastricImageDataset(train_paths, train_labels, build_transforms(train=True))
+    val_dataset = GastricImageDataset(val_paths, val_labels, build_transforms(train=False))
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=config.batch_size,
+        shuffle=True,
+        num_workers=config.num_workers,
+        pin_memory=torch.cuda.is_available(),
+    )
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=config.batch_size,
+        shuffle=False,
+        num_workers=config.num_workers,
+        pin_memory=torch.cuda.is_available(),
+    )
+
+    model = build_model(pretrained=config.pretrained).to(device)
+    criterion = nn.CrossEntropyLoss(weight=class_weights(train_labels, device))
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=config.learning_rate,
+        weight_decay=config.weight_decay,
+    )
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=config.epochs)
+
+    best_metrics: dict[str, float] = {"f1": -1.0}
+    checkpoint_path = config.output_dir / "best_model.pt"
+
+    for epoch in range(1, config.epochs + 1):
+        train_loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
+        scheduler.step()
+        metrics = evaluate(model, val_loader, device)
+        metrics["train_loss"] = train_loss
+        metrics["epoch"] = float(epoch)
+        print(json.dumps(metrics, sort_keys=True))
+
+        if metrics["f1"] > best_metrics["f1"]:
+            best_metrics = metrics
+            torch.save(
+                {
+                    "model_state_dict": model.state_dict(),
+                    "class_names": CLASS_NAMES,
+                    "config": {key: str(value) for key, value in config.__dict__.items()},
+                    "metrics": metrics,
+                },
+                checkpoint_path,
+            )
+
+    return best_metrics
