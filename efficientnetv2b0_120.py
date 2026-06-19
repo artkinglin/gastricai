@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 from dataclasses import dataclass
 from pathlib import Path
 import json
@@ -281,3 +282,35 @@ def train(config: TrainConfig) -> dict[str, float]:
             )
 
     return best_metrics
+
+
+def parse_args() -> TrainConfig:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--data-dir", type=Path, default=TrainConfig.data_dir)
+    parser.add_argument("--output-dir", type=Path, default=TrainConfig.output_dir)
+    parser.add_argument("--batch-size", type=int, default=TrainConfig.batch_size)
+    parser.add_argument("--epochs", type=int, default=TrainConfig.epochs)
+    parser.add_argument("--learning-rate", type=float, default=TrainConfig.learning_rate)
+    parser.add_argument("--weight-decay", type=float, default=TrainConfig.weight_decay)
+    parser.add_argument("--validation-size", type=float, default=TrainConfig.validation_size)
+    parser.add_argument("--seed", type=int, default=TrainConfig.seed)
+    parser.add_argument("--num-workers", type=int, default=TrainConfig.num_workers)
+    parser.add_argument("--no-pretrained", action="store_true")
+    args = parser.parse_args()
+    return TrainConfig(
+        data_dir=args.data_dir,
+        output_dir=args.output_dir,
+        batch_size=args.batch_size,
+        epochs=args.epochs,
+        learning_rate=args.learning_rate,
+        weight_decay=args.weight_decay,
+        validation_size=args.validation_size,
+        seed=args.seed,
+        num_workers=args.num_workers,
+        pretrained=not args.no_pretrained,
+    )
+
+
+if __name__ == "__main__":
+    final_metrics = train(parse_args())
+    print("best_metrics=" + json.dumps(final_metrics, sort_keys=True))
