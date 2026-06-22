@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import random
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -35,7 +36,17 @@ class TrainConfig:
     learning_rate: float = 1e-3
     threshold: float = 0.5
     num_workers: int = 0
+    seed: int = 42
     plot: bool = False
+
+
+def seed_everything(seed: int) -> None:
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
 
 
 def _candidate_label_dirs(data_dir: Path, aliases: tuple[str, ...]) -> list[Path]:
@@ -238,6 +249,7 @@ def make_loader(image_paths: list[Path], labels: list[int], batch_size: int, shu
 
 
 def train(config: TrainConfig) -> dict[str, object]:
+    seed_everything(config.seed)
     config.output_dir.mkdir(parents=True, exist_ok=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -295,6 +307,7 @@ def parse_args() -> TrainConfig:
     parser.add_argument("--learning-rate", type=float, default=TrainConfig.learning_rate)
     parser.add_argument("--threshold", type=float, default=TrainConfig.threshold)
     parser.add_argument("--num-workers", type=int, default=TrainConfig.num_workers)
+    parser.add_argument("--seed", type=int, default=TrainConfig.seed)
     parser.add_argument("--plot", action="store_true")
     args = parser.parse_args()
     return TrainConfig(
@@ -306,6 +319,7 @@ def parse_args() -> TrainConfig:
         learning_rate=args.learning_rate,
         threshold=args.threshold,
         num_workers=args.num_workers,
+        seed=args.seed,
         plot=args.plot,
     )
 
