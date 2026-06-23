@@ -40,6 +40,19 @@ class TrainConfig:
     plot: bool = False
 
 
+def validate_config(config: TrainConfig) -> None:
+    if config.batch_size < 1:
+        raise ValueError("batch_size must be at least 1")
+    if config.epochs < 1:
+        raise ValueError("epochs must be at least 1")
+    if config.learning_rate <= 0:
+        raise ValueError("learning_rate must be positive")
+    if not 0.0 <= config.threshold <= 1.0:
+        raise ValueError("threshold must be between 0.0 and 1.0")
+    if config.num_workers < 0:
+        raise ValueError("num_workers cannot be negative")
+
+
 def seed_everything(seed: int) -> None:
     random.seed(seed)
     np.random.seed(seed)
@@ -249,6 +262,7 @@ def make_loader(image_paths: list[Path], labels: list[int], batch_size: int, shu
 
 
 def train(config: TrainConfig) -> dict[str, object]:
+    validate_config(config)
     seed_everything(config.seed)
     config.output_dir.mkdir(parents=True, exist_ok=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
