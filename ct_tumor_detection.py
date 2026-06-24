@@ -306,6 +306,8 @@ def train(config: TrainConfig) -> dict[str, object]:
         },
         checkpoint_path,
     )
+    history_path = config.output_dir / "history.json"
+    history_path.write_text(json.dumps(history, indent=2, sort_keys=True), encoding="utf-8")
 
     final_result = evaluate(model, test_loader, test_paths, device, config.threshold)
     if config.plot:
@@ -317,6 +319,7 @@ def train(config: TrainConfig) -> dict[str, object]:
 
     return {
         "checkpoint": str(checkpoint_path),
+        "history": str(history_path),
         "metrics": final_result["metrics"],
     }
 
