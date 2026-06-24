@@ -209,6 +209,16 @@ def compute_metrics(labels: list[int], probabilities: list[float], threshold: fl
     }
 
 
+def positive_class_weight(labels: list[int], device: torch.device) -> torch.Tensor:
+    positive_count = sum(1 for label in labels if label == 1)
+    negative_count = sum(1 for label in labels if label == 0)
+    if positive_count == 0 or negative_count == 0:
+        raise ValueError(
+            f"Both classes are required to compute class weight, got normal={negative_count}, tumor={positive_count}"
+        )
+    return torch.tensor([negative_count / positive_count], dtype=torch.float32, device=device)
+
+
 def estimate_tumor_size_pixels(image_path: Path, threshold: int = 127) -> int:
     image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
     if image is None:
@@ -273,7 +283,7 @@ def train(config: TrainConfig) -> dict[str, object]:
     test_loader = make_loader(test_paths, test_labels, config.batch_size, False, config.num_workers)
 
     model = SimpleCNN().to(device)
-    criterion = nn.BCEWithLogitsLoss()
+    criterion = nn.BCEWithLogitsLoss(pos_weight=positive_class_weight(train_labels, device))
     optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
 
     history: list[dict[str, float]] = []
