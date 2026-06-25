@@ -316,6 +316,8 @@ def train(config: TrainConfig) -> dict[str, object]:
     optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
 
     history: list[dict[str, float]] = []
+    best_f1 = -1.0
+    checkpoint_path = config.output_dir / "best_ct_tumor_model.pt"
     for epoch in range(1, config.epochs + 1):
         train_loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
         result = evaluate(model, test_loader, test_paths, device, config.threshold)
@@ -325,16 +327,17 @@ def train(config: TrainConfig) -> dict[str, object]:
         history.append(metrics)
         print(json.dumps(metrics, sort_keys=True))
 
-    checkpoint_path = config.output_dir / "ct_tumor_model.pt"
-    torch.save(
-        {
-            "model_state_dict": model.state_dict(),
-            "class_names": CLASS_NAMES,
-            "config": {key: str(value) for key, value in config.__dict__.items()},
-            "history": history,
-        },
-        checkpoint_path,
-    )
+        if metrics["f1"] > best_f1:
+            best_f1 = metrics["f1"]
+            torch.save(
+                {
+                    "model_state_dict": model.state_dict(),
+                    "class_names": CLASS_NAMES,
+                    "config": {key: str(value) for key, value in config.__dict__.items()},
+                    "metrics": metrics,
+                },
+                checkpoint_path,
+            )
     history_path = config.output_dir / "history.json"
     history_path.write_text(json.dumps(history, indent=2, sort_keys=True), encoding="utf-8")
 
