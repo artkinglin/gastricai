@@ -341,6 +341,8 @@ def train(config: TrainConfig) -> dict[str, object]:
     history_path = config.output_dir / "history.json"
     history_path.write_text(json.dumps(history, indent=2, sort_keys=True), encoding="utf-8")
 
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+    model.load_state_dict(checkpoint["model_state_dict"])
     final_result = evaluate(model, test_loader, test_paths, device, config.threshold)
     predictions_path = config.output_dir / "predictions.csv"
     write_prediction_report(
