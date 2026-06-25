@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import random
 from dataclasses import dataclass
@@ -232,10 +233,38 @@ def evaluate(model: nn.Module, dataloader: DataLoader, image_paths: list[Path], 
     metrics = compute_metrics(labels, probabilities, threshold=threshold)
     tumor_sizes = [estimate_tumor_size_pixels(path) for path in image_paths]
     return {
+        "labels": labels,
         "metrics": metrics,
         "probabilities": probabilities,
         "tumor_sizes": tumor_sizes,
     }
+
+
+def write_prediction_report(
+    output_path: Path,
+    image_paths: list[Path],
+    labels: list[int],
+    probabilities: list[float],
+    tumor_sizes: list[int],
+    threshold: float,
+) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(
+            file,
+            fieldnames=["image_path", "label", "probability", "prediction", "tumor_size_pixels"],
+        )
+        writer.writeheader()
+        for image_path, label, probability, tumor_size in zip(image_paths, labels, probabilities, tumor_sizes):
+            writer.writerow(
+                {
+                    "image_path": str(image_path),
+                    "label": CLASS_NAMES[label],
+                    "probability": probability,
+                    "prediction": CLASS_NAMES[1 if probability >= threshold else 0],
+                    "tumor_size_pixels": tumor_size,
+                }
+            )
 
 
 def plot_results(probabilities: list[float], tumor_sizes: list[int], output_path: Path | None = None) -> None:
@@ -310,6 +339,15 @@ def train(config: TrainConfig) -> dict[str, object]:
     history_path.write_text(json.dumps(history, indent=2, sort_keys=True), encoding="utf-8")
 
     final_result = evaluate(model, test_loader, test_paths, device, config.threshold)
+    predictions_path = config.output_dir / "predictions.csv"
+    write_prediction_report(
+        predictions_path,
+        test_paths,
+        final_result["labels"],
+        final_result["probabilities"],
+        final_result["tumor_sizes"],
+        config.threshold,
+    )
     if config.plot:
         plot_results(
             final_result["probabilities"],
@@ -320,6 +358,7 @@ def train(config: TrainConfig) -> dict[str, object]:
     return {
         "checkpoint": str(checkpoint_path),
         "history": str(history_path),
+        "predictions": str(predictions_path),
         "metrics": final_result["metrics"],
     }
 
