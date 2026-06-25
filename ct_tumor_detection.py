@@ -36,6 +36,7 @@ class TrainConfig:
     epochs: int = 5
     learning_rate: float = 1e-3
     threshold: float = 0.5
+    tumor_area_threshold: int = 127
     num_workers: int = 0
     seed: int = 42
     plot: bool = False
@@ -50,6 +51,8 @@ def validate_config(config: TrainConfig) -> None:
         raise ValueError("learning_rate must be positive")
     if not 0.0 <= config.threshold <= 1.0:
         raise ValueError("threshold must be between 0.0 and 1.0")
+    if not 0 <= config.tumor_area_threshold <= 255:
+        raise ValueError("tumor_area_threshold must be between 0 and 255")
     if config.num_workers < 0:
         raise ValueError("num_workers cannot be negative")
 
@@ -228,10 +231,17 @@ def estimate_tumor_size_pixels(image_path: Path, threshold: int = 127) -> int:
     return int(np.count_nonzero(mask))
 
 
-def evaluate(model: nn.Module, dataloader: DataLoader, image_paths: list[Path], device: torch.device, threshold: float) -> dict[str, object]:
+def evaluate(
+    model: nn.Module,
+    dataloader: DataLoader,
+    image_paths: list[Path],
+    device: torch.device,
+    threshold: float,
+    tumor_area_threshold: int,
+) -> dict[str, object]:
     probabilities, labels = predict_probabilities(model, dataloader, device)
     metrics = compute_metrics(labels, probabilities, threshold=threshold)
-    tumor_sizes = [estimate_tumor_size_pixels(path) for path in image_paths]
+    tumor_sizes = [estimate_tumor_size_pixels(path, threshold=tumor_area_threshold) for path in image_paths]
     return {
         "labels": labels,
         "metrics": metrics,
@@ -320,7 +330,7 @@ def train(config: TrainConfig) -> dict[str, object]:
     checkpoint_path = config.output_dir / "best_ct_tumor_model.pt"
     for epoch in range(1, config.epochs + 1):
         train_loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
-        result = evaluate(model, test_loader, test_paths, device, config.threshold)
+        result = evaluate(model, test_loader, test_paths, device, config.threshold, config.tumor_area_threshold)
         metrics = dict(result["metrics"])
         metrics["epoch"] = float(epoch)
         metrics["train_loss"] = train_loss
@@ -343,7 +353,7 @@ def train(config: TrainConfig) -> dict[str, object]:
 
     checkpoint = torch.load(checkpoint_path, map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
-    final_result = evaluate(model, test_loader, test_paths, device, config.threshold)
+    final_result = evaluate(model, test_loader, test_paths, device, config.threshold, config.tumor_area_threshold)
     predictions_path = config.output_dir / "predictions.csv"
     write_prediction_report(
         predictions_path,
@@ -377,6 +387,7 @@ def parse_args() -> TrainConfig:
     parser.add_argument("--epochs", type=int, default=TrainConfig.epochs)
     parser.add_argument("--learning-rate", type=float, default=TrainConfig.learning_rate)
     parser.add_argument("--threshold", type=float, default=TrainConfig.threshold)
+    parser.add_argument("--tumor-area-threshold", type=int, default=TrainConfig.tumor_area_threshold)
     parser.add_argument("--num-workers", type=int, default=TrainConfig.num_workers)
     parser.add_argument("--seed", type=int, default=TrainConfig.seed)
     parser.add_argument("--plot", action="store_true")
@@ -389,6 +400,7 @@ def parse_args() -> TrainConfig:
         epochs=args.epochs,
         learning_rate=args.learning_rate,
         threshold=args.threshold,
+        tumor_area_threshold=args.tumor_area_threshold,
         num_workers=args.num_workers,
         seed=args.seed,
         plot=args.plot,
