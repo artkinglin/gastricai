@@ -39,6 +39,7 @@ class TrainConfig:
     tumor_area_threshold: int = 127
     num_workers: int = 0
     seed: int = 42
+    device: str = "auto"
     plot: bool = False
 
 
@@ -55,6 +56,16 @@ def validate_config(config: TrainConfig) -> None:
         raise ValueError("tumor_area_threshold must be between 0 and 255")
     if config.num_workers < 0:
         raise ValueError("num_workers cannot be negative")
+    if config.device not in {"auto", "cpu", "cuda"}:
+        raise ValueError("device must be one of: auto, cpu, cuda")
+
+
+def select_device(device_name: str) -> torch.device:
+    if device_name == "auto":
+        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if device_name == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError("CUDA was requested but is not available")
+    return torch.device(device_name)
 
 
 def seed_everything(seed: int) -> None:
@@ -314,7 +325,7 @@ def train(config: TrainConfig) -> dict[str, object]:
     validate_config(config)
     seed_everything(config.seed)
     config.output_dir.mkdir(parents=True, exist_ok=True)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = select_device(config.device)
 
     train_paths, train_labels = discover_image_paths(config.train_dir)
     test_paths, test_labels = discover_image_paths(config.test_dir)
@@ -390,6 +401,7 @@ def parse_args() -> TrainConfig:
     parser.add_argument("--tumor-area-threshold", type=int, default=TrainConfig.tumor_area_threshold)
     parser.add_argument("--num-workers", type=int, default=TrainConfig.num_workers)
     parser.add_argument("--seed", type=int, default=TrainConfig.seed)
+    parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default=TrainConfig.device)
     parser.add_argument("--plot", action="store_true")
     args = parser.parse_args()
     return TrainConfig(
@@ -403,6 +415,7 @@ def parse_args() -> TrainConfig:
         tumor_area_threshold=args.tumor_area_threshold,
         num_workers=args.num_workers,
         seed=args.seed,
+        device=args.device,
         plot=args.plot,
     )
 
