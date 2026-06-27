@@ -40,6 +40,7 @@ class TrainConfig:
     num_workers: int = 0
     seed: int = 42
     device: str = "auto"
+    max_images_per_class: int | None = None
     plot: bool = False
 
 
@@ -58,6 +59,8 @@ def validate_config(config: TrainConfig) -> None:
         raise ValueError("num_workers cannot be negative")
     if config.device not in {"auto", "cpu", "cuda"}:
         raise ValueError("device must be one of: auto, cpu, cuda")
+    if config.max_images_per_class is not None and config.max_images_per_class < 1:
+        raise ValueError("max_images_per_class must be at least 1")
 
 
 def select_device(device_name: str) -> torch.device:
@@ -86,16 +89,20 @@ def _candidate_label_dirs(data_dir: Path, aliases: tuple[str, ...]) -> list[Path
     return [path for path in candidates if path.is_dir()]
 
 
-def discover_image_paths(data_dir: Path) -> tuple[list[Path], list[int]]:
+def discover_image_paths(data_dir: Path, max_images_per_class: int | None = None) -> tuple[list[Path], list[int]]:
     image_paths: list[Path] = []
     labels: list[int] = []
 
     for label_index, class_name in enumerate(CLASS_NAMES):
+        class_paths: list[Path] = []
         for class_dir in _candidate_label_dirs(data_dir, LABEL_ALIASES[class_name]):
             for image_path in sorted(class_dir.rglob("*")):
                 if image_path.suffix.lower() in IMAGE_EXTENSIONS:
-                    image_paths.append(image_path)
-                    labels.append(label_index)
+                    class_paths.append(image_path)
+        if max_images_per_class is not None:
+            class_paths = class_paths[:max_images_per_class]
+        image_paths.extend(class_paths)
+        labels.extend([label_index] * len(class_paths))
 
     if not image_paths:
         expected = ", ".join(CLASS_NAMES)
@@ -327,8 +334,8 @@ def train(config: TrainConfig) -> dict[str, object]:
     config.output_dir.mkdir(parents=True, exist_ok=True)
     device = select_device(config.device)
 
-    train_paths, train_labels = discover_image_paths(config.train_dir)
-    test_paths, test_labels = discover_image_paths(config.test_dir)
+    train_paths, train_labels = discover_image_paths(config.train_dir, config.max_images_per_class)
+    test_paths, test_labels = discover_image_paths(config.test_dir, config.max_images_per_class)
     train_loader = make_loader(train_paths, train_labels, config.batch_size, True, config.num_workers)
     test_loader = make_loader(test_paths, test_labels, config.batch_size, False, config.num_workers)
 
@@ -402,6 +409,7 @@ def parse_args() -> TrainConfig:
     parser.add_argument("--num-workers", type=int, default=TrainConfig.num_workers)
     parser.add_argument("--seed", type=int, default=TrainConfig.seed)
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default=TrainConfig.device)
+    parser.add_argument("--max-images-per-class", type=int, default=TrainConfig.max_images_per_class)
     parser.add_argument("--plot", action="store_true")
     args = parser.parse_args()
     return TrainConfig(
@@ -416,6 +424,7 @@ def parse_args() -> TrainConfig:
         num_workers=args.num_workers,
         seed=args.seed,
         device=args.device,
+        max_images_per_class=args.max_images_per_class,
         plot=args.plot,
     )
 
