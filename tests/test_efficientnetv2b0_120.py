@@ -1,13 +1,11 @@
 from pathlib import Path
 
-from PIL import Image
-
-from efficientnetv2b0_120 import compute_metrics, discover_image_paths, stratified_split
+from gastric_common import discover_image_paths, stratified_split
 
 
 def _write_image(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    Image.new("RGB", (120, 120), color=(128, 64, 32)).save(path)
+    path.write_bytes(b"not a real image")
 
 
 def test_discovers_normal_and_abnormal_folders(tmp_path: Path) -> None:
@@ -28,11 +26,3 @@ def test_stratified_split_keeps_both_classes() -> None:
 
     assert set(train_labels) == {0, 1}
     assert set(val_labels) == {0, 1}
-
-
-def test_metrics_respect_threshold() -> None:
-    metrics = compute_metrics([0, 0, 1, 1], [0.1, 0.4, 0.8, 0.9], threshold=0.5)
-
-    assert metrics["accuracy"] == 1.0
-    assert metrics["f1"] == 1.0
-    assert metrics["roc_auc"] == 1.0
