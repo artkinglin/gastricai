@@ -45,3 +45,36 @@ python efficientnetv2b0_120.py --data-dir data/GasHisSDB/120 --epochs 25
 ```
 
 The best model checkpoint is written to `runs/efficientnetv2b0_120/best_model.pt`.
+
+## CT Tumor Detection
+
+The CT workflow expects PNG images grouped by class folder:
+
+```text
+data/train/normal
+data/train/tumor
+data/test/normal
+data/test/tumor
+```
+
+Compatible folder aliases include `negative`, `benign`, `no_tumor`,
+`positive`, `malignant`, and `abnormal`.
+
+Run a short CPU smoke test:
+
+```powershell
+python ct_tumor_detection.py --device cpu --epochs 1 --max-images-per-class 8
+```
+
+Run a full training pass:
+
+```powershell
+python ct_tumor_detection.py --train-dir data/train --test-dir data/test --epochs 5 --plot
+```
+
+Outputs are written under `runs/ct_tumor_detection/`:
+
+- `best_ct_tumor_model.pt`
+- `history.json`
+- `predictions.csv`
+- `evaluation_histograms.png` when `--plot` is used
