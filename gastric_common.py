@@ -79,3 +79,71 @@ def stratified_split(
         train_labels.extend([label] * len(train_group))
 
     return train_paths, val_paths, train_labels, val_labels
+
+
+def confusion_counts(labels: list[int], probabilities: list[float], threshold: float = 0.5) -> dict[str, int]:
+    predictions = [1 if probability >= threshold else 0 for probability in probabilities]
+    return {
+        "true_negative": sum(1 for label, prediction in zip(labels, predictions) if label == 0 and prediction == 0),
+        "false_positive": sum(1 for label, prediction in zip(labels, predictions) if label == 0 and prediction == 1),
+        "false_negative": sum(1 for label, prediction in zip(labels, predictions) if label == 1 and prediction == 0),
+        "true_positive": sum(1 for label, prediction in zip(labels, predictions) if label == 1 and prediction == 1),
+    }
+
+
+def roc_auc_score(labels: list[int], probabilities: list[float]) -> float:
+    positives = [score for label, score in zip(labels, probabilities) if label == 1]
+    negatives = [score for label, score in zip(labels, probabilities) if label == 0]
+    if not positives or not negatives:
+        return float("nan")
+
+    wins = 0.0
+    for positive in positives:
+        for negative in negatives:
+            if positive > negative:
+                wins += 1.0
+            elif positive == negative:
+                wins += 0.5
+    return wins / (len(positives) * len(negatives))
+
+
+def compute_metrics(labels: list[int], probabilities: list[float], threshold: float = 0.5) -> dict[str, float]:
+    counts = confusion_counts(labels, probabilities, threshold)
+    true_positive = counts["true_positive"]
+    true_negative = counts["true_negative"]
+    false_positive = counts["false_positive"]
+    false_negative = counts["false_negative"]
+    total = max(len(labels), 1)
+    precision_denominator = true_positive + false_positive
+    recall_denominator = true_positive + false_negative
+    precision = true_positive / precision_denominator if precision_denominator else 0.0
+    recall = true_positive / recall_denominator if recall_denominator else 0.0
+    f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+    return {
+        "accuracy": (true_positive + true_negative) / total,
+        "f1": f1,
+        "precision": precision,
+        "recall": recall,
+        "roc_auc": roc_auc_score(labels, probabilities),
+    }
+
+
+def candidate_thresholds(probabilities: list[float]) -> list[float]:
+    thresholds = {0.5}
+    thresholds.update(max(0.0, min(1.0, probability)) for probability in probabilities)
+    return sorted(thresholds)
+
+
+def tune_threshold(labels: list[int], probabilities: list[float]) -> tuple[float, dict[str, float]]:
+    best_threshold = 0.5
+    best_metrics = compute_metrics(labels, probabilities, threshold=best_threshold)
+    for threshold in candidate_thresholds(probabilities):
+        metrics = compute_metrics(labels, probabilities, threshold=threshold)
+        if (metrics["f1"], metrics["recall"], metrics["precision"]) > (
+            best_metrics["f1"],
+            best_metrics["recall"],
+            best_metrics["precision"],
+        ):
+            best_threshold = threshold
+            best_metrics = metrics
+    return best_threshold, best_metrics
