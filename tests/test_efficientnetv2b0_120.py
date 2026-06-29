@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from gastric_common import discover_image_paths, stratified_split
+from gastric_common import compute_metrics, confusion_counts, discover_image_paths, stratified_split, tune_threshold
 
 
 def _write_image(path: Path) -> None:
@@ -26,3 +26,29 @@ def test_stratified_split_keeps_both_classes() -> None:
 
     assert set(train_labels) == {0, 1}
     assert set(val_labels) == {0, 1}
+
+
+def test_metrics_respect_threshold() -> None:
+    metrics = compute_metrics([0, 0, 1, 1], [0.1, 0.4, 0.8, 0.9], threshold=0.5)
+
+    assert metrics["accuracy"] == 1.0
+    assert metrics["f1"] == 1.0
+    assert metrics["roc_auc"] == 1.0
+
+
+def test_confusion_counts_include_all_cells() -> None:
+    counts = confusion_counts([0, 0, 1, 1], [0.2, 0.7, 0.4, 0.8], threshold=0.5)
+
+    assert counts == {
+        "true_negative": 1,
+        "false_positive": 1,
+        "false_negative": 1,
+        "true_positive": 1,
+    }
+
+
+def test_threshold_tuning_prefers_best_f1() -> None:
+    threshold, metrics = tune_threshold([0, 0, 1, 1], [0.1, 0.2, 0.7, 0.8])
+
+    assert threshold >= 0.5
+    assert metrics["f1"] == 1.0
