@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import csv
+import json
 import random
 from pathlib import Path
 from typing import Iterable
@@ -147,3 +149,17 @@ def tune_threshold(labels: list[int], probabilities: list[float]) -> tuple[float
             best_threshold = threshold
             best_metrics = metrics
     return best_threshold, best_metrics
+
+
+def write_json(path: Path, payload: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def write_history_csv(path: Path, history: list[dict[str, float]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fieldnames = sorted({key for row in history for key in row})
+    with path.open("w", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(history)
