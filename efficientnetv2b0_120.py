@@ -16,7 +16,7 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision import models
 from torchvision import transforms
 
-from gastric_common import CLASS_NAMES, compute_metrics, discover_image_paths, stratified_split
+from gastric_common import CLASS_NAMES, compute_metrics, discover_image_paths, stratified_split, write_history_csv, write_json
 
 
 IMAGE_SIZE = 120
@@ -193,6 +193,7 @@ def train(config: TrainConfig) -> dict[str, float]:
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=config.epochs)
 
     best_metrics: dict[str, float] = {"f1": -1.0}
+    history: list[dict[str, float]] = []
     checkpoint_path = config.output_dir / "best_model.pt"
 
     for epoch in range(1, config.epochs + 1):
@@ -201,6 +202,7 @@ def train(config: TrainConfig) -> dict[str, float]:
         metrics = evaluate(model, val_loader, device)
         metrics["train_loss"] = train_loss
         metrics["epoch"] = float(epoch)
+        history.append(metrics)
         print(json.dumps(metrics, sort_keys=True))
 
         if metrics["f1"] > best_metrics["f1"]:
@@ -215,6 +217,8 @@ def train(config: TrainConfig) -> dict[str, float]:
                 checkpoint_path,
             )
 
+    write_json(config.output_dir / "history.json", history)
+    write_history_csv(config.output_dir / "history.csv", history)
     return best_metrics
 
 
