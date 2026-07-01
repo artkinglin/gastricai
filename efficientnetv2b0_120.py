@@ -109,7 +109,7 @@ def class_weights(labels: list[int], device: torch.device) -> torch.Tensor:
 
 
 @torch.no_grad()
-def evaluate(model: nn.Module, loader: DataLoader, device: torch.device, threshold: float = 0.5) -> dict[str, float]:
+def predict_probabilities(model: nn.Module, loader: DataLoader, device: torch.device) -> tuple[list[float], list[int]]:
     model.eval()
     labels: list[int] = []
     probabilities: list[float] = []
@@ -121,7 +121,16 @@ def evaluate(model: nn.Module, loader: DataLoader, device: torch.device, thresho
         probabilities.extend(batch_probabilities.cpu().tolist())
         labels.extend(targets.tolist())
 
-    return compute_metrics(labels, probabilities, threshold=threshold)
+    return probabilities, labels
+
+
+def evaluate(model: nn.Module, loader: DataLoader, device: torch.device, threshold: float = 0.5) -> dict[str, object]:
+    probabilities, labels = predict_probabilities(model, loader, device)
+    return {
+        "labels": labels,
+        "metrics": compute_metrics(labels, probabilities, threshold=threshold),
+        "probabilities": probabilities,
+    }
 
 
 def train_one_epoch(
