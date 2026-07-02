@@ -208,7 +208,8 @@ def train(config: TrainConfig) -> dict[str, float]:
     for epoch in range(1, config.epochs + 1):
         train_loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
         scheduler.step()
-        metrics = evaluate(model, val_loader, device)
+        val_result = evaluate(model, val_loader, device)
+        metrics = dict(val_result["metrics"])
         metrics["train_loss"] = train_loss
         metrics["epoch"] = float(epoch)
         history.append(metrics)
