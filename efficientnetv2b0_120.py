@@ -22,6 +22,7 @@ from gastric_common import (
     confusion_counts,
     discover_image_paths,
     stratified_split,
+    tune_threshold,
     write_history_csv,
     write_json,
 )
@@ -219,6 +220,9 @@ def train(config: TrainConfig) -> dict[str, float]:
         scheduler.step()
         val_result = evaluate(model, val_loader, device)
         metrics = dict(val_result["metrics"])
+        tuned_threshold, tuned_metrics = tune_threshold(val_result["labels"], val_result["probabilities"])
+        metrics["tuned_threshold"] = tuned_threshold
+        metrics["tuned_f1"] = tuned_metrics["f1"]
         metrics["train_loss"] = train_loss
         metrics["epoch"] = float(epoch)
         history.append(metrics)
@@ -232,6 +236,7 @@ def train(config: TrainConfig) -> dict[str, float]:
                     "class_names": CLASS_NAMES,
                     "config": {key: str(value) for key, value in config.__dict__.items()},
                     "metrics": metrics,
+                    "threshold": tuned_threshold,
                 },
                 checkpoint_path,
             )
