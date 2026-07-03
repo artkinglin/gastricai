@@ -48,6 +48,23 @@ class TrainConfig:
     pretrained: bool = True
 
 
+def validate_config(config: TrainConfig) -> None:
+    if config.batch_size < 1:
+        raise ValueError("batch_size must be at least 1")
+    if config.epochs < 1:
+        raise ValueError("epochs must be at least 1")
+    if config.learning_rate <= 0:
+        raise ValueError("learning_rate must be positive")
+    if config.weight_decay < 0:
+        raise ValueError("weight_decay cannot be negative")
+    if not 0 < config.validation_size < 1:
+        raise ValueError("validation_size must be between 0 and 1")
+    if config.num_workers < 0:
+        raise ValueError("num_workers cannot be negative")
+    if config.early_stopping_patience < 1:
+        raise ValueError("early_stopping_patience must be at least 1")
+
+
 def seed_everything(seed: int) -> None:
     random.seed(seed)
     np.random.seed(seed)
@@ -174,6 +191,7 @@ def train_one_epoch(
 
 
 def train(config: TrainConfig) -> dict[str, float]:
+    validate_config(config)
     seed_everything(config.seed)
     config.output_dir.mkdir(parents=True, exist_ok=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
