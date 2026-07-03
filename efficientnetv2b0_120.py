@@ -44,6 +44,7 @@ class TrainConfig:
     validation_size: float = 0.2
     seed: int = 42
     num_workers: int = 2
+    early_stopping_patience: int = 5
     pretrained: bool = True
 
 
@@ -212,6 +213,7 @@ def train(config: TrainConfig) -> dict[str, float]:
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=config.epochs)
 
     best_metrics: dict[str, float] = {"f1": -1.0}
+    epochs_without_improvement = 0
     history: list[dict[str, float]] = []
     checkpoint_path = config.output_dir / "best_model.pt"
 
@@ -230,6 +232,7 @@ def train(config: TrainConfig) -> dict[str, float]:
 
         if metrics["f1"] > best_metrics["f1"]:
             best_metrics = metrics
+            epochs_without_improvement = 0
             torch.save(
                 {
                     "model_state_dict": model.state_dict(),
@@ -240,6 +243,11 @@ def train(config: TrainConfig) -> dict[str, float]:
                 },
                 checkpoint_path,
             )
+        else:
+            epochs_without_improvement += 1
+            if epochs_without_improvement >= config.early_stopping_patience:
+                print(json.dumps({"early_stopped_at_epoch": epoch}, sort_keys=True))
+                break
 
     write_json(config.output_dir / "history.json", history)
     write_history_csv(config.output_dir / "history.csv", history)
@@ -257,6 +265,7 @@ def parse_args() -> TrainConfig:
     parser.add_argument("--validation-size", type=float, default=TrainConfig.validation_size)
     parser.add_argument("--seed", type=int, default=TrainConfig.seed)
     parser.add_argument("--num-workers", type=int, default=TrainConfig.num_workers)
+    parser.add_argument("--early-stopping-patience", type=int, default=TrainConfig.early_stopping_patience)
     parser.add_argument("--no-pretrained", action="store_true")
     args = parser.parse_args()
     return TrainConfig(
@@ -269,6 +278,7 @@ def parse_args() -> TrainConfig:
         validation_size=args.validation_size,
         seed=args.seed,
         num_workers=args.num_workers,
+        early_stopping_patience=args.early_stopping_patience,
         pretrained=not args.no_pretrained,
     )
 
