@@ -16,7 +16,15 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision import models
 from torchvision import transforms
 
-from gastric_common import CLASS_NAMES, compute_metrics, discover_image_paths, stratified_split, write_history_csv, write_json
+from gastric_common import (
+    CLASS_NAMES,
+    compute_metrics,
+    confusion_counts,
+    discover_image_paths,
+    stratified_split,
+    write_history_csv,
+    write_json,
+)
 
 
 IMAGE_SIZE = 120
@@ -127,6 +135,7 @@ def predict_probabilities(model: nn.Module, loader: DataLoader, device: torch.de
 def evaluate(model: nn.Module, loader: DataLoader, device: torch.device, threshold: float = 0.5) -> dict[str, object]:
     probabilities, labels = predict_probabilities(model, loader, device)
     return {
+        "confusion_matrix": confusion_counts(labels, probabilities, threshold=threshold),
         "labels": labels,
         "metrics": compute_metrics(labels, probabilities, threshold=threshold),
         "probabilities": probabilities,
