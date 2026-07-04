@@ -36,6 +36,7 @@ IMAGENET_STD = (0.229, 0.224, 0.225)
 @dataclass(frozen=True)
 class TrainConfig:
     data_dir: Path = Path("data/GasHisSDB/120")
+    test_dir: Path | None = None
     output_dir: Path = Path("runs/efficientnetv2b0_120")
     batch_size: int = 32
     epochs: int = 25
@@ -275,6 +276,7 @@ def train(config: TrainConfig) -> dict[str, float]:
 def parse_args() -> TrainConfig:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-dir", type=Path, default=TrainConfig.data_dir)
+    parser.add_argument("--test-dir", type=Path, default=TrainConfig.test_dir)
     parser.add_argument("--output-dir", type=Path, default=TrainConfig.output_dir)
     parser.add_argument("--batch-size", type=int, default=TrainConfig.batch_size)
     parser.add_argument("--epochs", type=int, default=TrainConfig.epochs)
@@ -288,6 +290,7 @@ def parse_args() -> TrainConfig:
     args = parser.parse_args()
     return TrainConfig(
         data_dir=args.data_dir,
+        test_dir=args.test_dir,
         output_dir=args.output_dir,
         batch_size=args.batch_size,
         epochs=args.epochs,
