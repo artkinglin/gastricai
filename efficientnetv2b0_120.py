@@ -191,6 +191,23 @@ def train_one_epoch(
     return running_loss / max(seen, 1)
 
 
+def make_loader(
+    image_paths: list[Path],
+    labels: list[int],
+    batch_size: int,
+    transform: transforms.Compose,
+    shuffle: bool,
+    num_workers: int,
+) -> DataLoader:
+    return DataLoader(
+        GastricImageDataset(image_paths, labels, transform),
+        batch_size=batch_size,
+        shuffle=shuffle,
+        num_workers=num_workers,
+        pin_memory=torch.cuda.is_available(),
+    )
+
+
 def train(config: TrainConfig) -> dict[str, float]:
     validate_config(config)
     seed_everything(config.seed)
@@ -205,21 +222,11 @@ def train(config: TrainConfig) -> dict[str, float]:
         config.seed,
     )
 
-    train_dataset = GastricImageDataset(train_paths, train_labels, build_transforms(train=True))
-    val_dataset = GastricImageDataset(val_paths, val_labels, build_transforms(train=False))
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=config.batch_size,
-        shuffle=True,
-        num_workers=config.num_workers,
-        pin_memory=torch.cuda.is_available(),
+    train_loader = make_loader(
+        train_paths, train_labels, config.batch_size, build_transforms(train=True), True, config.num_workers
     )
-    val_loader = DataLoader(
-        val_dataset,
-        batch_size=config.batch_size,
-        shuffle=False,
-        num_workers=config.num_workers,
-        pin_memory=torch.cuda.is_available(),
+    val_loader = make_loader(
+        val_paths, val_labels, config.batch_size, build_transforms(train=False), False, config.num_workers
     )
 
     model = build_model(pretrained=config.pretrained).to(device)
