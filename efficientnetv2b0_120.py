@@ -277,6 +277,17 @@ def train(config: TrainConfig) -> dict[str, float]:
 
     write_json(config.output_dir / "history.json", history)
     write_history_csv(config.output_dir / "history.csv", history)
+    if config.test_dir is not None:
+        checkpoint = torch.load(checkpoint_path, map_location=device)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        test_paths, test_labels = discover_image_paths(config.test_dir)
+        test_loader = make_loader(
+            test_paths, test_labels, config.batch_size, build_transforms(train=False), False, config.num_workers
+        )
+        threshold = float(checkpoint.get("threshold", 0.5))
+        test_result = evaluate(model, test_loader, device, threshold=threshold)
+        write_json(config.output_dir / "test_metrics.json", test_result["metrics"])
+        write_json(config.output_dir / "test_confusion_matrix.json", test_result["confusion_matrix"])
     return best_metrics
 
 
