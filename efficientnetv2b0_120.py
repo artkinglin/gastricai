@@ -25,6 +25,7 @@ from gastric_common import (
     tune_threshold,
     write_history_csv,
     write_json,
+    write_prediction_csv,
 )
 
 
@@ -288,6 +289,13 @@ def train(config: TrainConfig) -> dict[str, float]:
         test_result = evaluate(model, test_loader, device, threshold=threshold)
         write_json(config.output_dir / "test_metrics.json", test_result["metrics"])
         write_json(config.output_dir / "test_confusion_matrix.json", test_result["confusion_matrix"])
+        write_prediction_csv(
+            config.output_dir / "test_predictions.csv",
+            test_paths,
+            test_result["labels"],
+            test_result["probabilities"],
+            threshold,
+        )
     return best_metrics
 
 
