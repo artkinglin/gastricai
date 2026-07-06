@@ -163,3 +163,26 @@ def write_history_csv(path: Path, history: list[dict[str, float]]) -> None:
         writer = csv.DictWriter(file, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(history)
+
+
+def write_prediction_csv(
+    path: Path,
+    image_paths: list[Path],
+    labels: list[int],
+    probabilities: list[float],
+    threshold: float,
+    class_names: tuple[str, str] = CLASS_NAMES,
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(file, fieldnames=["image_path", "label", "probability", "prediction"])
+        writer.writeheader()
+        for image_path, label, probability in zip(image_paths, labels, probabilities):
+            writer.writerow(
+                {
+                    "image_path": str(image_path),
+                    "label": class_names[label],
+                    "probability": probability,
+                    "prediction": class_names[1 if probability >= threshold else 0],
+                }
+            )
