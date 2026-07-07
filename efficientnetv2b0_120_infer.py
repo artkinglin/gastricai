@@ -19,7 +19,10 @@ def collect_images(input_path: Path) -> list[Path]:
             raise ValueError(f"Unsupported image extension: {input_path}")
         return [input_path]
     if input_path.is_dir():
-        return sorted(path for path in input_path.rglob("*") if path.suffix.lower() in IMAGE_EXTENSIONS)
+        image_paths = sorted(path for path in input_path.rglob("*") if path.suffix.lower() in IMAGE_EXTENSIONS)
+        if not image_paths:
+            raise FileNotFoundError(f"No supported images found under: {input_path}")
+        return image_paths
     raise FileNotFoundError(f"Input path does not exist: {input_path}")
 
 
@@ -32,6 +35,8 @@ def load_checkpoint(checkpoint_path: Path, device: torch.device) -> tuple[torch.
 
 
 def run_inference(checkpoint_path: Path, input_path: Path, output_csv: Path, batch_size: int) -> dict[str, object]:
+    if batch_size < 1:
+        raise ValueError("batch_size must be at least 1")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     image_paths = collect_images(input_path)
     labels = [0] * len(image_paths)
