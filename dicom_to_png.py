@@ -26,6 +26,35 @@ class ConvertConfig:
     overwrite: bool = False
 
 
+def _first_numeric(value: object, default: float) -> float:
+    if value is None:
+        return default
+    if isinstance(value, (list, tuple)):
+        return float(value[0]) if value else default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def apply_rescale(pixel_array: np.ndarray, dataset: pydicom.Dataset) -> np.ndarray:
+    slope = _first_numeric(getattr(dataset, "RescaleSlope", 1.0), 1.0)
+    intercept = _first_numeric(getattr(dataset, "RescaleIntercept", 0.0), 0.0)
+    return pixel_array.astype(np.float32) * slope + intercept
+
+
+def window_to_uint8(image: np.ndarray, dataset: pydicom.Dataset) -> np.ndarray:
+    center = _first_numeric(getattr(dataset, "WindowCenter", None), float(np.mean(image)))
+    width = _first_numeric(getattr(dataset, "WindowWidth", None), float(np.ptp(image)))
+    if width <= 0:
+        width = float(np.ptp(image)) or 1.0
+    lower = center - width / 2
+    upper = center + width / 2
+    clipped = np.clip(image, lower, upper)
+    normalized = (clipped - lower) / max(upper - lower, 1.0)
+    return (normalized * 255).astype(np.uint8)
+
+
 def discover_dicom_files(input_dir: Path, recursive: bool = True) -> list[Path]:
     pattern = "**/*" if recursive else "*"
     return sorted(path for path in input_dir.glob(pattern) if path.is_file() and path.suffix.lower() == ".dcm")
