@@ -60,6 +60,11 @@ def discover_dicom_files(input_dir: Path, recursive: bool = True) -> list[Path]:
     return sorted(path for path in input_dir.glob(pattern) if path.is_file() and path.suffix.lower() == ".dcm")
 
 
+def output_path_for(dicom_path: Path, input_dir: Path, output_dir: Path) -> Path:
+    relative_path = dicom_path.relative_to(input_dir)
+    return output_dir / relative_path.with_suffix(".png")
+
+
 def parse_args() -> ConvertConfig:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input-dir", type=Path, default=ConvertConfig.input_dir)
