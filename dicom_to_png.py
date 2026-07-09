@@ -65,6 +65,31 @@ def output_path_for(dicom_path: Path, input_dir: Path, output_dir: Path) -> Path
     return output_dir / relative_path.with_suffix(".png")
 
 
+def convert_one(dicom_path: Path, output_path: Path, overwrite: bool = False) -> dict[str, object]:
+    if output_path.exists() and not overwrite:
+        return {"input": str(dicom_path), "output": str(output_path), "status": "skipped"}
+
+    try:
+        dataset = pydicom.dcmread(dicom_path)
+        image = apply_rescale(dataset.pixel_array, dataset)
+        png = window_to_uint8(image, dataset)
+    except Exception as exc:
+        LOGGER.warning("Skipping invalid DICOM %s: %s", dicom_path, exc)
+        return {"input": str(dicom_path), "output": str(output_path), "status": "failed", "error": str(exc)}
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if not cv2.imwrite(str(output_path), png):
+        return {"input": str(dicom_path), "output": str(output_path), "status": "failed", "error": "cv2.imwrite failed"}
+
+    return {
+        "input": str(dicom_path),
+        "output": str(output_path),
+        "status": "converted",
+        "rows": int(png.shape[0]),
+        "columns": int(png.shape[1]),
+    }
+
+
 def parse_args() -> ConvertConfig:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input-dir", type=Path, default=ConvertConfig.input_dir)
