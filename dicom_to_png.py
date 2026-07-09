@@ -90,6 +90,28 @@ def convert_one(dicom_path: Path, output_path: Path, overwrite: bool = False) ->
     }
 
 
+def write_metadata(path: Path, records: list[dict[str, object]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fieldnames = sorted({key for record in records for key in record})
+    with path.open("w", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(records)
+
+
+def convert_directory(config: ConvertConfig) -> list[dict[str, object]]:
+    dicom_files = discover_dicom_files(config.input_dir, config.recursive)
+    records: list[dict[str, object]] = []
+    for dicom_path in tqdm(dicom_files, desc="dicom"):
+        output_path = output_path_for(dicom_path, config.input_dir, config.output_dir)
+        records.append(convert_one(dicom_path, output_path, overwrite=config.overwrite))
+
+    metadata_csv = config.metadata_csv or config.output_dir / "conversion_metadata.csv"
+    write_metadata(metadata_csv, records)
+    LOGGER.info("Wrote metadata to %s", metadata_csv)
+    return records
+
+
 def parse_args() -> ConvertConfig:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input-dir", type=Path, default=ConvertConfig.input_dir)
@@ -110,4 +132,8 @@ def parse_args() -> ConvertConfig:
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     config = parse_args()
-    LOGGER.info("Found %s DICOM files", len(discover_dicom_files(config.input_dir, config.recursive)))
+    records = convert_directory(config)
+    converted = sum(1 for record in records if record["status"] == "converted")
+    skipped = sum(1 for record in records if record["status"] == "skipped")
+    failed = sum(1 for record in records if record["status"] == "failed")
+    LOGGER.info("Converted=%s skipped=%s failed=%s", converted, skipped, failed)
