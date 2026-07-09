@@ -26,6 +26,13 @@ class ConvertConfig:
     overwrite: bool = False
 
 
+def validate_config(config: ConvertConfig) -> None:
+    if not config.input_dir.exists():
+        raise FileNotFoundError(f"Input directory does not exist: {config.input_dir}")
+    if not config.input_dir.is_dir():
+        raise NotADirectoryError(f"Input path is not a directory: {config.input_dir}")
+
+
 def _first_numeric(value: object, default: float) -> float:
     if value is None:
         return default
@@ -100,6 +107,7 @@ def write_metadata(path: Path, records: list[dict[str, object]]) -> None:
 
 
 def convert_directory(config: ConvertConfig) -> list[dict[str, object]]:
+    validate_config(config)
     dicom_files = discover_dicom_files(config.input_dir, config.recursive)
     records: list[dict[str, object]] = []
     for dicom_path in tqdm(dicom_files, desc="dicom"):
