@@ -44,7 +44,21 @@ Then run:
 python efficientnetv2b0_120.py --data-dir data/GasHisSDB/120 --epochs 25
 ```
 
-The best model checkpoint is written to `runs/efficientnetv2b0_120/best_model.pt`.
+Use an external test set when available:
+
+```powershell
+python efficientnetv2b0_120.py --data-dir data/GasHisSDB/120 --test-dir data/GasHisSDB/test
+```
+
+The EfficientNet workflow writes `best_model.pt`, `history.json`,
+`history.csv`, threshold-tuned validation metrics, and optional external test
+reports under `runs/efficientnetv2b0_120/`.
+
+Run inference from a saved checkpoint:
+
+```powershell
+python efficientnetv2b0_120_infer.py --input data/GasHisSDB/test
+```
 
 ## CT Tumor Detection
 
