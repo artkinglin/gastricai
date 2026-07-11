@@ -78,3 +78,15 @@ Outputs are written under `runs/ct_tumor_detection/`:
 - `history.json`
 - `predictions.csv`
 - `evaluation_histograms.png` when `--plot` is used
+
+## DICOM Conversion
+
+Convert DICOM files to PNG while preserving nested study/series folders:
+
+```powershell
+python dicom_to_png.py --input-dir data/raw_dicom --output-dir data/processed_png
+```
+
+The converter applies CT `RescaleSlope`/`RescaleIntercept`, uses DICOM window
+center/width when available, skips invalid files with a warning, and writes
+`conversion_metadata.csv` to the output directory.
