@@ -8,9 +8,7 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
-import cv2
 import numpy as np
-import pydicom
 from tqdm import tqdm
 
 
@@ -44,13 +42,13 @@ def _first_numeric(value: object, default: float) -> float:
         return default
 
 
-def apply_rescale(pixel_array: np.ndarray, dataset: pydicom.Dataset) -> np.ndarray:
+def apply_rescale(pixel_array: np.ndarray, dataset: object) -> np.ndarray:
     slope = _first_numeric(getattr(dataset, "RescaleSlope", 1.0), 1.0)
     intercept = _first_numeric(getattr(dataset, "RescaleIntercept", 0.0), 0.0)
     return pixel_array.astype(np.float32) * slope + intercept
 
 
-def window_to_uint8(image: np.ndarray, dataset: pydicom.Dataset) -> np.ndarray:
+def window_to_uint8(image: np.ndarray, dataset: object) -> np.ndarray:
     center = _first_numeric(getattr(dataset, "WindowCenter", None), float(np.mean(image)))
     width = _first_numeric(getattr(dataset, "WindowWidth", None), float(np.ptp(image)))
     if width <= 0:
@@ -77,6 +75,9 @@ def convert_one(dicom_path: Path, output_path: Path, overwrite: bool = False) ->
         return {"input": str(dicom_path), "output": str(output_path), "status": "skipped"}
 
     try:
+        import cv2
+        import pydicom
+
         dataset = pydicom.dcmread(dicom_path)
         image = apply_rescale(dataset.pixel_array, dataset)
         png = window_to_uint8(image, dataset)
