@@ -1,0 +1,23 @@
+[project]
+name = "gastricai"
+version = "0.1.0"
+description = "Prototype gastric image classification and CT/DICOM preprocessing tools."
+requires-python = ">=3.11,<3.13"
+readme = "README.md"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+strict = false
+files = ["gastric_common.py", "dicom_to_png.py", "experiment_config.py", "ct_segmentation.py"]
