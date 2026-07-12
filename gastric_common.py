@@ -23,7 +23,11 @@ def candidate_label_dirs(data_dir: Path, aliases: Iterable[str]) -> list[Path]:
         candidates.extend(data_dir.glob(alias))
         candidates.extend(data_dir.glob(alias.capitalize()))
         candidates.extend(data_dir.glob(alias.upper()))
-    return [path for path in candidates if path.is_dir()]
+    unique_candidates: dict[str, Path] = {}
+    for path in candidates:
+        if path.is_dir():
+            unique_candidates.setdefault(str(path.resolve()).casefold(), path)
+    return list(unique_candidates.values())
 
 
 def discover_image_paths(data_dir: Path) -> tuple[list[Path], list[int]]:
