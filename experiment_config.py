@@ -15,6 +15,11 @@ def load_config_file(path: Path | None) -> dict[str, Any]:
     suffix = path.suffix.lower()
     if suffix == ".json":
         return json.loads(path.read_text(encoding="utf-8"))
+    if suffix in {".yaml", ".yml"}:
+        import yaml
+
+        loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
+        return {} if loaded is None else dict(loaded)
     raise ValueError(f"Unsupported config extension: {path.suffix}")
 
 
