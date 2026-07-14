@@ -1,0 +1,14 @@
+{
+  "data_dir": "data/GasHisSDB/120",
+  "test_dir": "data/GasHisSDB/test",
+  "output_dir": "runs/efficientnetv2b0_120/example",
+  "batch_size": 32,
+  "epochs": 25,
+  "learning_rate": 0.0003,
+  "weight_decay": 0.0001,
+  "validation_size": 0.2,
+  "seed": 42,
+  "num_workers": 2,
+  "early_stopping_patience": 5,
+  "pretrained": true
+}
