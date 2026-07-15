@@ -39,6 +39,7 @@ class TrainConfig:
     data_dir: Path = Path("data/GasHisSDB/120")
     test_dir: Path | None = None
     output_dir: Path = Path("runs/efficientnetv2b0_120")
+    run_name: str | None = None
     batch_size: int = 32
     epochs: int = 25
     learning_rate: float = 3e-4
@@ -212,7 +213,8 @@ def make_loader(
 def train(config: TrainConfig) -> dict[str, float]:
     validate_config(config)
     seed_everything(config.seed)
-    config.output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = config.output_dir / config.run_name if config.run_name else config.output_dir
+    output_dir.mkdir(parents=True, exist_ok=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     image_paths, labels = discover_image_paths(config.data_dir)
@@ -242,7 +244,7 @@ def train(config: TrainConfig) -> dict[str, float]:
     best_metrics: dict[str, float] = {"f1": -1.0}
     epochs_without_improvement = 0
     history: list[dict[str, float]] = []
-    checkpoint_path = config.output_dir / "best_model.pt"
+    checkpoint_path = output_dir / "best_model.pt"
 
     for epoch in range(1, config.epochs + 1):
         train_loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
@@ -276,8 +278,8 @@ def train(config: TrainConfig) -> dict[str, float]:
                 print(json.dumps({"early_stopped_at_epoch": epoch}, sort_keys=True))
                 break
 
-    write_json(config.output_dir / "history.json", history)
-    write_history_csv(config.output_dir / "history.csv", history)
+    write_json(output_dir / "history.json", history)
+    write_history_csv(output_dir / "history.csv", history)
     if config.test_dir is not None:
         checkpoint = torch.load(checkpoint_path, map_location=device)
         model.load_state_dict(checkpoint["model_state_dict"])
@@ -287,10 +289,10 @@ def train(config: TrainConfig) -> dict[str, float]:
         )
         threshold = float(checkpoint.get("threshold", 0.5))
         test_result = evaluate(model, test_loader, device, threshold=threshold)
-        write_json(config.output_dir / "test_metrics.json", test_result["metrics"])
-        write_json(config.output_dir / "test_confusion_matrix.json", test_result["confusion_matrix"])
+        write_json(output_dir / "test_metrics.json", test_result["metrics"])
+        write_json(output_dir / "test_confusion_matrix.json", test_result["confusion_matrix"])
         write_prediction_csv(
-            config.output_dir / "test_predictions.csv",
+            output_dir / "test_predictions.csv",
             test_paths,
             test_result["labels"],
             test_result["probabilities"],
@@ -304,6 +306,7 @@ def parse_args() -> TrainConfig:
     parser.add_argument("--data-dir", type=Path, default=TrainConfig.data_dir)
     parser.add_argument("--test-dir", type=Path, default=TrainConfig.test_dir)
     parser.add_argument("--output-dir", type=Path, default=TrainConfig.output_dir)
+    parser.add_argument("--run-name", type=str, default=TrainConfig.run_name)
     parser.add_argument("--batch-size", type=int, default=TrainConfig.batch_size)
     parser.add_argument("--epochs", type=int, default=TrainConfig.epochs)
     parser.add_argument("--learning-rate", type=float, default=TrainConfig.learning_rate)
@@ -318,6 +321,7 @@ def parse_args() -> TrainConfig:
         data_dir=args.data_dir,
         test_dir=args.test_dir,
         output_dir=args.output_dir,
+        run_name=args.run_name,
         batch_size=args.batch_size,
         epochs=args.epochs,
         learning_rate=args.learning_rate,
