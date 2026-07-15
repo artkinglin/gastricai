@@ -1,0 +1,15 @@
+{
+  "train_dir": "data/train",
+  "test_dir": "data/test",
+  "output_dir": "runs/ct_tumor_detection/example",
+  "batch_size": 8,
+  "epochs": 5,
+  "learning_rate": 0.001,
+  "threshold": 0.5,
+  "tumor_area_threshold": 127,
+  "num_workers": 0,
+  "seed": 42,
+  "device": "auto",
+  "max_images_per_class": null,
+  "plot": false
+}
