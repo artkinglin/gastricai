@@ -32,6 +32,7 @@ class TrainConfig:
     train_dir: Path = Path("data/train")
     test_dir: Path = Path("data/test")
     output_dir: Path = Path("runs/ct_tumor_detection")
+    run_name: str | None = None
     batch_size: int = 8
     epochs: int = 5
     learning_rate: float = 1e-3
@@ -331,7 +332,8 @@ def make_loader(image_paths: list[Path], labels: list[int], batch_size: int, shu
 def train(config: TrainConfig) -> dict[str, object]:
     validate_config(config)
     seed_everything(config.seed)
-    config.output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = config.output_dir / config.run_name if config.run_name else config.output_dir
+    output_dir.mkdir(parents=True, exist_ok=True)
     device = select_device(config.device)
 
     train_paths, train_labels = discover_image_paths(config.train_dir, config.max_images_per_class)
@@ -345,7 +347,7 @@ def train(config: TrainConfig) -> dict[str, object]:
 
     history: list[dict[str, float]] = []
     best_f1 = -1.0
-    checkpoint_path = config.output_dir / "best_ct_tumor_model.pt"
+    checkpoint_path = output_dir / "best_ct_tumor_model.pt"
     for epoch in range(1, config.epochs + 1):
         train_loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
         result = evaluate(model, test_loader, test_paths, device, config.threshold, config.tumor_area_threshold)
@@ -366,13 +368,13 @@ def train(config: TrainConfig) -> dict[str, object]:
                 },
                 checkpoint_path,
             )
-    history_path = config.output_dir / "history.json"
+    history_path = output_dir / "history.json"
     history_path.write_text(json.dumps(history, indent=2, sort_keys=True), encoding="utf-8")
 
     checkpoint = torch.load(checkpoint_path, map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
     final_result = evaluate(model, test_loader, test_paths, device, config.threshold, config.tumor_area_threshold)
-    predictions_path = config.output_dir / "predictions.csv"
+    predictions_path = output_dir / "predictions.csv"
     write_prediction_report(
         predictions_path,
         test_paths,
@@ -385,7 +387,7 @@ def train(config: TrainConfig) -> dict[str, object]:
         plot_results(
             final_result["probabilities"],
             final_result["tumor_sizes"],
-            config.output_dir / "evaluation_histograms.png",
+            output_dir / "evaluation_histograms.png",
         )
 
     return {
@@ -401,6 +403,7 @@ def parse_args() -> TrainConfig:
     parser.add_argument("--train-dir", type=Path, default=TrainConfig.train_dir)
     parser.add_argument("--test-dir", type=Path, default=TrainConfig.test_dir)
     parser.add_argument("--output-dir", type=Path, default=TrainConfig.output_dir)
+    parser.add_argument("--run-name", type=str, default=TrainConfig.run_name)
     parser.add_argument("--batch-size", type=int, default=TrainConfig.batch_size)
     parser.add_argument("--epochs", type=int, default=TrainConfig.epochs)
     parser.add_argument("--learning-rate", type=float, default=TrainConfig.learning_rate)
@@ -416,6 +419,7 @@ def parse_args() -> TrainConfig:
         train_dir=args.train_dir,
         test_dir=args.test_dir,
         output_dir=args.output_dir,
+        run_name=args.run_name,
         batch_size=args.batch_size,
         epochs=args.epochs,
         learning_rate=args.learning_rate,
