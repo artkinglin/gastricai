@@ -17,6 +17,15 @@ LABEL_ALIASES = {
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp"}
 
 
+def parse_label(value: str, class_names: tuple[str, str] = CLASS_NAMES) -> int:
+    normalized = value.strip().casefold()
+    if normalized in {"0", class_names[0].casefold()}:
+        return 0
+    if normalized in {"1", class_names[1].casefold()}:
+        return 1
+    raise ValueError(f"Unknown label: {value}")
+
+
 def candidate_label_dirs(data_dir: Path, aliases: Iterable[str]) -> list[Path]:
     candidates: list[Path] = []
     for alias in aliases:
@@ -47,6 +56,28 @@ def discover_image_paths(data_dir: Path) -> tuple[list[Path], list[int]]:
             f"No images found under {data_dir}. Expected class folders like Normal/Abnormal."
         )
 
+    return image_paths, labels
+
+
+def read_manifest(
+    manifest_path: Path,
+    root_dir: Path | None = None,
+    class_names: tuple[str, str] = CLASS_NAMES,
+) -> tuple[list[Path], list[int]]:
+    image_paths: list[Path] = []
+    labels: list[int] = []
+    with manifest_path.open(newline="", encoding="utf-8") as file:
+        reader = csv.DictReader(file)
+        if reader.fieldnames is None or not {"image_path", "label"}.issubset(reader.fieldnames):
+            raise ValueError("Manifest must contain image_path and label columns")
+        for row in reader:
+            image_path = Path(row["image_path"])
+            if root_dir is not None and not image_path.is_absolute():
+                image_path = root_dir / image_path
+            image_paths.append(image_path)
+            labels.append(parse_label(row["label"], class_names))
+    if not image_paths:
+        raise ValueError(f"Manifest is empty: {manifest_path}")
     return image_paths, labels
 
 
