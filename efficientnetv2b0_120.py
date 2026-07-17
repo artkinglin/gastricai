@@ -16,6 +16,7 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision import models
 from torchvision import transforms
 
+from experiment_config import coerce_path, load_config_file
 from gastric_common import (
     CLASS_NAMES,
     compute_metrics,
@@ -303,6 +304,7 @@ def train(config: TrainConfig) -> dict[str, float]:
 
 def parse_args() -> TrainConfig:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--config", type=Path, default=None)
     parser.add_argument("--data-dir", type=Path, default=TrainConfig.data_dir)
     parser.add_argument("--test-dir", type=Path, default=TrainConfig.test_dir)
     parser.add_argument("--output-dir", type=Path, default=TrainConfig.output_dir)
@@ -317,20 +319,21 @@ def parse_args() -> TrainConfig:
     parser.add_argument("--early-stopping-patience", type=int, default=TrainConfig.early_stopping_patience)
     parser.add_argument("--no-pretrained", action="store_true")
     args = parser.parse_args()
+    config_values = load_config_file(args.config)
     return TrainConfig(
-        data_dir=args.data_dir,
-        test_dir=args.test_dir,
-        output_dir=args.output_dir,
-        run_name=args.run_name,
-        batch_size=args.batch_size,
-        epochs=args.epochs,
-        learning_rate=args.learning_rate,
-        weight_decay=args.weight_decay,
-        validation_size=args.validation_size,
-        seed=args.seed,
-        num_workers=args.num_workers,
-        early_stopping_patience=args.early_stopping_patience,
-        pretrained=not args.no_pretrained,
+        data_dir=coerce_path(config_values.get("data_dir", args.data_dir)) or args.data_dir,
+        test_dir=coerce_path(config_values.get("test_dir", args.test_dir)),
+        output_dir=coerce_path(config_values.get("output_dir", args.output_dir)) or args.output_dir,
+        run_name=config_values.get("run_name", args.run_name),
+        batch_size=int(config_values.get("batch_size", args.batch_size)),
+        epochs=int(config_values.get("epochs", args.epochs)),
+        learning_rate=float(config_values.get("learning_rate", args.learning_rate)),
+        weight_decay=float(config_values.get("weight_decay", args.weight_decay)),
+        validation_size=float(config_values.get("validation_size", args.validation_size)),
+        seed=int(config_values.get("seed", args.seed)),
+        num_workers=int(config_values.get("num_workers", args.num_workers)),
+        early_stopping_patience=int(config_values.get("early_stopping_patience", args.early_stopping_patience)),
+        pretrained=bool(config_values.get("pretrained", not args.no_pretrained)),
     )
 
 
