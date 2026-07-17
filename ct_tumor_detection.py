@@ -17,6 +17,8 @@ from torch import nn
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
+from experiment_config import coerce_path, load_config_file
+
 
 IMAGE_SIZE = 224
 CLASS_NAMES = ("normal", "tumor")
@@ -400,6 +402,7 @@ def train(config: TrainConfig) -> dict[str, object]:
 
 def parse_args() -> TrainConfig:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--config", type=Path, default=None)
     parser.add_argument("--train-dir", type=Path, default=TrainConfig.train_dir)
     parser.add_argument("--test-dir", type=Path, default=TrainConfig.test_dir)
     parser.add_argument("--output-dir", type=Path, default=TrainConfig.output_dir)
@@ -415,21 +418,22 @@ def parse_args() -> TrainConfig:
     parser.add_argument("--max-images-per-class", type=int, default=TrainConfig.max_images_per_class)
     parser.add_argument("--plot", action="store_true")
     args = parser.parse_args()
+    config_values = load_config_file(args.config)
     return TrainConfig(
-        train_dir=args.train_dir,
-        test_dir=args.test_dir,
-        output_dir=args.output_dir,
-        run_name=args.run_name,
-        batch_size=args.batch_size,
-        epochs=args.epochs,
-        learning_rate=args.learning_rate,
-        threshold=args.threshold,
-        tumor_area_threshold=args.tumor_area_threshold,
-        num_workers=args.num_workers,
-        seed=args.seed,
-        device=args.device,
-        max_images_per_class=args.max_images_per_class,
-        plot=args.plot,
+        train_dir=coerce_path(config_values.get("train_dir", args.train_dir)) or args.train_dir,
+        test_dir=coerce_path(config_values.get("test_dir", args.test_dir)) or args.test_dir,
+        output_dir=coerce_path(config_values.get("output_dir", args.output_dir)) or args.output_dir,
+        run_name=config_values.get("run_name", args.run_name),
+        batch_size=int(config_values.get("batch_size", args.batch_size)),
+        epochs=int(config_values.get("epochs", args.epochs)),
+        learning_rate=float(config_values.get("learning_rate", args.learning_rate)),
+        threshold=float(config_values.get("threshold", args.threshold)),
+        tumor_area_threshold=int(config_values.get("tumor_area_threshold", args.tumor_area_threshold)),
+        num_workers=int(config_values.get("num_workers", args.num_workers)),
+        seed=int(config_values.get("seed", args.seed)),
+        device=str(config_values.get("device", args.device)),
+        max_images_per_class=config_values.get("max_images_per_class", args.max_images_per_class),
+        plot=bool(config_values.get("plot", args.plot)),
     )
 
 
