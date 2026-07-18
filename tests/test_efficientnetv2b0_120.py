@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from gastric_common import compute_metrics, confusion_counts, discover_image_paths, stratified_split, tune_threshold
+from gastric_common import compute_metrics, confusion_counts, discover_image_paths, read_manifest, stratified_split, tune_threshold
 
 
 def _write_image(path: Path) -> None:
@@ -52,3 +52,13 @@ def test_threshold_tuning_prefers_best_f1() -> None:
 
     assert threshold >= 0.5
     assert metrics["f1"] == 1.0
+
+
+def test_manifest_reader_accepts_named_labels(tmp_path: Path) -> None:
+    manifest = tmp_path / "manifest.csv"
+    manifest.write_text("image_path,label\ncase_001.png,benign\ncase_002.png,malignant\n", encoding="utf-8")
+
+    image_paths, labels = read_manifest(manifest, root_dir=tmp_path)
+
+    assert image_paths == [tmp_path / "case_001.png", tmp_path / "case_002.png"]
+    assert labels == [0, 1]
