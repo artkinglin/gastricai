@@ -22,6 +22,7 @@ from gastric_common import (
     compute_metrics,
     confusion_counts,
     discover_image_paths,
+    read_manifest,
     stratified_split,
     tune_threshold,
     write_history_csv,
@@ -38,7 +39,9 @@ IMAGENET_STD = (0.229, 0.224, 0.225)
 @dataclass(frozen=True)
 class TrainConfig:
     data_dir: Path = Path("data/GasHisSDB/120")
+    manifest: Path | None = None
     test_dir: Path | None = None
+    test_manifest: Path | None = None
     output_dir: Path = Path("runs/efficientnetv2b0_120")
     run_name: str | None = None
     batch_size: int = 32
@@ -218,7 +221,9 @@ def train(config: TrainConfig) -> dict[str, float]:
     output_dir.mkdir(parents=True, exist_ok=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    image_paths, labels = discover_image_paths(config.data_dir)
+    image_paths, labels = (
+        read_manifest(config.manifest, root_dir=config.data_dir) if config.manifest else discover_image_paths(config.data_dir)
+    )
     train_paths, val_paths, train_labels, val_labels = stratified_split(
         image_paths,
         labels,
@@ -284,7 +289,10 @@ def train(config: TrainConfig) -> dict[str, float]:
     if config.test_dir is not None:
         checkpoint = torch.load(checkpoint_path, map_location=device)
         model.load_state_dict(checkpoint["model_state_dict"])
-        test_paths, test_labels = discover_image_paths(config.test_dir)
+        if config.test_manifest is not None:
+            test_paths, test_labels = read_manifest(config.test_manifest, root_dir=config.test_dir)
+        else:
+            test_paths, test_labels = discover_image_paths(config.test_dir)
         test_loader = make_loader(
             test_paths, test_labels, config.batch_size, build_transforms(train=False), False, config.num_workers
         )
@@ -306,7 +314,9 @@ def parse_args() -> TrainConfig:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=None)
     parser.add_argument("--data-dir", type=Path, default=TrainConfig.data_dir)
+    parser.add_argument("--manifest", type=Path, default=TrainConfig.manifest)
     parser.add_argument("--test-dir", type=Path, default=TrainConfig.test_dir)
+    parser.add_argument("--test-manifest", type=Path, default=TrainConfig.test_manifest)
     parser.add_argument("--output-dir", type=Path, default=TrainConfig.output_dir)
     parser.add_argument("--run-name", type=str, default=TrainConfig.run_name)
     parser.add_argument("--batch-size", type=int, default=TrainConfig.batch_size)
@@ -322,7 +332,9 @@ def parse_args() -> TrainConfig:
     config_values = load_config_file(args.config)
     return TrainConfig(
         data_dir=coerce_path(config_values.get("data_dir", args.data_dir)) or args.data_dir,
+        manifest=coerce_path(config_values.get("manifest", args.manifest)),
         test_dir=coerce_path(config_values.get("test_dir", args.test_dir)),
+        test_manifest=coerce_path(config_values.get("test_manifest", args.test_manifest)),
         output_dir=coerce_path(config_values.get("output_dir", args.output_dir)) or args.output_dir,
         run_name=config_values.get("run_name", args.run_name),
         batch_size=int(config_values.get("batch_size", args.batch_size)),
