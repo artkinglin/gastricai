@@ -18,6 +18,7 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
 from experiment_config import coerce_path, load_config_file
+from gastric_common import read_manifest
 
 
 IMAGE_SIZE = 224
@@ -32,7 +33,9 @@ IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp"}
 @dataclass(frozen=True)
 class TrainConfig:
     train_dir: Path = Path("data/train")
+    train_manifest: Path | None = None
     test_dir: Path = Path("data/test")
+    test_manifest: Path | None = None
     output_dir: Path = Path("runs/ct_tumor_detection")
     run_name: str | None = None
     batch_size: int = 8
@@ -338,8 +341,16 @@ def train(config: TrainConfig) -> dict[str, object]:
     output_dir.mkdir(parents=True, exist_ok=True)
     device = select_device(config.device)
 
-    train_paths, train_labels = discover_image_paths(config.train_dir, config.max_images_per_class)
-    test_paths, test_labels = discover_image_paths(config.test_dir, config.max_images_per_class)
+    train_paths, train_labels = (
+        read_manifest(config.train_manifest, root_dir=config.train_dir, class_names=CLASS_NAMES)
+        if config.train_manifest
+        else discover_image_paths(config.train_dir, config.max_images_per_class)
+    )
+    test_paths, test_labels = (
+        read_manifest(config.test_manifest, root_dir=config.test_dir, class_names=CLASS_NAMES)
+        if config.test_manifest
+        else discover_image_paths(config.test_dir, config.max_images_per_class)
+    )
     train_loader = make_loader(train_paths, train_labels, config.batch_size, True, config.num_workers)
     test_loader = make_loader(test_paths, test_labels, config.batch_size, False, config.num_workers)
 
@@ -404,7 +415,9 @@ def parse_args() -> TrainConfig:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=None)
     parser.add_argument("--train-dir", type=Path, default=TrainConfig.train_dir)
+    parser.add_argument("--train-manifest", type=Path, default=TrainConfig.train_manifest)
     parser.add_argument("--test-dir", type=Path, default=TrainConfig.test_dir)
+    parser.add_argument("--test-manifest", type=Path, default=TrainConfig.test_manifest)
     parser.add_argument("--output-dir", type=Path, default=TrainConfig.output_dir)
     parser.add_argument("--run-name", type=str, default=TrainConfig.run_name)
     parser.add_argument("--batch-size", type=int, default=TrainConfig.batch_size)
@@ -421,7 +434,9 @@ def parse_args() -> TrainConfig:
     config_values = load_config_file(args.config)
     return TrainConfig(
         train_dir=coerce_path(config_values.get("train_dir", args.train_dir)) or args.train_dir,
+        train_manifest=coerce_path(config_values.get("train_manifest", args.train_manifest)),
         test_dir=coerce_path(config_values.get("test_dir", args.test_dir)) or args.test_dir,
+        test_manifest=coerce_path(config_values.get("test_manifest", args.test_manifest)),
         output_dir=coerce_path(config_values.get("output_dir", args.output_dir)) or args.output_dir,
         run_name=config_values.get("run_name", args.run_name),
         batch_size=int(config_values.get("batch_size", args.batch_size)),
