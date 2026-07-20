@@ -18,7 +18,7 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
 from experiment_config import coerce_path, load_config_file
-from gastric_common import read_manifest
+from gastric_common import read_manifest, stratified_split
 
 
 IMAGE_SIZE = 224
@@ -34,13 +34,14 @@ IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp"}
 class TrainConfig:
     train_dir: Path = Path("data/train")
     train_manifest: Path | None = None
-    test_dir: Path = Path("data/test")
+    test_dir: Path | None = Path("data/test")
     test_manifest: Path | None = None
     output_dir: Path = Path("runs/ct_tumor_detection")
     run_name: str | None = None
     batch_size: int = 8
     epochs: int = 5
     learning_rate: float = 1e-3
+    validation_size: float = 0.2
     threshold: float = 0.5
     tumor_area_threshold: int = 127
     num_workers: int = 0
@@ -57,6 +58,8 @@ def validate_config(config: TrainConfig) -> None:
         raise ValueError("epochs must be at least 1")
     if config.learning_rate <= 0:
         raise ValueError("learning_rate must be positive")
+    if not 0 < config.validation_size < 1:
+        raise ValueError("validation_size must be between 0 and 1")
     if not 0.0 <= config.threshold <= 1.0:
         raise ValueError("threshold must be between 0.0 and 1.0")
     if not 0 <= config.tumor_area_threshold <= 255:
@@ -346,11 +349,14 @@ def train(config: TrainConfig) -> dict[str, object]:
         if config.train_manifest
         else discover_image_paths(config.train_dir, config.max_images_per_class)
     )
-    test_paths, test_labels = (
-        read_manifest(config.test_manifest, root_dir=config.test_dir, class_names=CLASS_NAMES)
-        if config.test_manifest
-        else discover_image_paths(config.test_dir, config.max_images_per_class)
-    )
+    if config.test_manifest is not None:
+        test_paths, test_labels = read_manifest(config.test_manifest, root_dir=config.test_dir, class_names=CLASS_NAMES)
+    elif config.test_dir is not None:
+        test_paths, test_labels = discover_image_paths(config.test_dir, config.max_images_per_class)
+    else:
+        train_paths, test_paths, train_labels, test_labels = stratified_split(
+            train_paths, train_labels, config.validation_size, config.seed
+        )
     train_loader = make_loader(train_paths, train_labels, config.batch_size, True, config.num_workers)
     test_loader = make_loader(test_paths, test_labels, config.batch_size, False, config.num_workers)
 
@@ -423,6 +429,7 @@ def parse_args() -> TrainConfig:
     parser.add_argument("--batch-size", type=int, default=TrainConfig.batch_size)
     parser.add_argument("--epochs", type=int, default=TrainConfig.epochs)
     parser.add_argument("--learning-rate", type=float, default=TrainConfig.learning_rate)
+    parser.add_argument("--validation-size", type=float, default=TrainConfig.validation_size)
     parser.add_argument("--threshold", type=float, default=TrainConfig.threshold)
     parser.add_argument("--tumor-area-threshold", type=int, default=TrainConfig.tumor_area_threshold)
     parser.add_argument("--num-workers", type=int, default=TrainConfig.num_workers)
@@ -442,6 +449,7 @@ def parse_args() -> TrainConfig:
         batch_size=int(config_values.get("batch_size", args.batch_size)),
         epochs=int(config_values.get("epochs", args.epochs)),
         learning_rate=float(config_values.get("learning_rate", args.learning_rate)),
+        validation_size=float(config_values.get("validation_size", args.validation_size)),
         threshold=float(config_values.get("threshold", args.threshold)),
         tumor_area_threshold=int(config_values.get("tumor_area_threshold", args.tumor_area_threshold)),
         num_workers=int(config_values.get("num_workers", args.num_workers)),
