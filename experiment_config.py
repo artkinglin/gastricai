@@ -27,3 +27,7 @@ def coerce_path(value: Any) -> Path | None:
     if value is None:
         return None
     return value if isinstance(value, Path) else Path(value)
+
+
+def get_config_value(values: dict[str, Any], key: str, default: Any) -> Any:
+    return values[key] if key in values else default
