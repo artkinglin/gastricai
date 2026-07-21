@@ -16,7 +16,7 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision import models
 from torchvision import transforms
 
-from experiment_config import coerce_path, load_config_file
+from experiment_config import coerce_path, get_config_value, load_config_file
 from gastric_common import (
     CLASS_NAMES,
     compute_metrics,
@@ -333,7 +333,7 @@ def parse_args() -> TrainConfig:
     return TrainConfig(
         data_dir=coerce_path(config_values.get("data_dir", args.data_dir)) or args.data_dir,
         manifest=coerce_path(config_values.get("manifest", args.manifest)),
-        test_dir=coerce_path(config_values.get("test_dir", args.test_dir)),
+        test_dir=coerce_path(get_config_value(config_values, "test_dir", args.test_dir)),
         test_manifest=coerce_path(config_values.get("test_manifest", args.test_manifest)),
         output_dir=coerce_path(config_values.get("output_dir", args.output_dir)) or args.output_dir,
         run_name=config_values.get("run_name", args.run_name),
