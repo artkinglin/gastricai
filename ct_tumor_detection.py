@@ -84,6 +84,10 @@ def select_device(device_name: str) -> torch.device:
     return torch.device(device_name)
 
 
+def optional_float(value: object) -> float | None:
+    return None if value is None else float(value)
+
+
 def seed_everything(seed: int) -> None:
     random.seed(seed)
     np.random.seed(seed)
@@ -471,7 +475,7 @@ def parse_args() -> TrainConfig:
         validation_size=float(config_values.get("validation_size", args.validation_size)),
         threshold=float(config_values.get("threshold", args.threshold)),
         tumor_area_threshold=int(config_values.get("tumor_area_threshold", args.tumor_area_threshold)),
-        pixel_spacing_mm=config_values.get("pixel_spacing_mm", args.pixel_spacing_mm),
+        pixel_spacing_mm=optional_float(config_values.get("pixel_spacing_mm", args.pixel_spacing_mm)),
         num_workers=int(config_values.get("num_workers", args.num_workers)),
         seed=int(config_values.get("seed", args.seed)),
         device=str(config_values.get("device", args.device)),
