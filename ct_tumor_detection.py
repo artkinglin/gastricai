@@ -45,6 +45,7 @@ class TrainConfig:
     validation_size: float = 0.2
     threshold: float = 0.5
     tumor_area_threshold: int = 127
+    pixel_spacing_mm: float | None = None
     num_workers: int = 0
     seed: int = 42
     device: str = "auto"
@@ -65,6 +66,8 @@ def validate_config(config: TrainConfig) -> None:
         raise ValueError("threshold must be between 0.0 and 1.0")
     if not 0 <= config.tumor_area_threshold <= 255:
         raise ValueError("tumor_area_threshold must be between 0 and 255")
+    if config.pixel_spacing_mm is not None and config.pixel_spacing_mm <= 0:
+        raise ValueError("pixel_spacing_mm must be positive")
     if config.num_workers < 0:
         raise ValueError("num_workers cannot be negative")
     if config.device not in {"auto", "cpu", "cuda"}:
@@ -251,11 +254,13 @@ def positive_class_weight(labels: list[int], device: torch.device) -> torch.Tens
     return torch.tensor([negative_count / positive_count], dtype=torch.float32, device=device)
 
 
-def estimate_tumor_size_pixels(image_path: Path, threshold: int = 127) -> int:
+def estimate_tumor_area(image_path: Path, threshold: int = 127, pixel_spacing_mm: float | None = None) -> tuple[int, float | None]:
     image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
     if image is None:
         raise ValueError(f"Could not read image: {image_path}")
-    return segment_threshold_area(image, threshold=threshold).pixel_count
+    spacing = (pixel_spacing_mm, pixel_spacing_mm) if pixel_spacing_mm is not None else None
+    result = segment_threshold_area(image, threshold=threshold, pixel_spacing=spacing)
+    return result.pixel_count, result.area_mm2
 
 
 def evaluate(
@@ -265,14 +270,18 @@ def evaluate(
     device: torch.device,
     threshold: float,
     tumor_area_threshold: int,
+    pixel_spacing_mm: float | None,
 ) -> dict[str, object]:
     probabilities, labels = predict_probabilities(model, dataloader, device)
     metrics = compute_metrics(labels, probabilities, threshold=threshold)
-    tumor_sizes = [estimate_tumor_size_pixels(path, threshold=tumor_area_threshold) for path in image_paths]
+    tumor_areas = [estimate_tumor_area(path, threshold=tumor_area_threshold, pixel_spacing_mm=pixel_spacing_mm) for path in image_paths]
+    tumor_sizes = [area[0] for area in tumor_areas]
+    tumor_area_mm2 = [area[1] for area in tumor_areas]
     return {
         "labels": labels,
         "metrics": metrics,
         "probabilities": probabilities,
+        "tumor_area_mm2": tumor_area_mm2,
         "tumor_sizes": tumor_sizes,
     }
 
@@ -283,16 +292,19 @@ def write_prediction_report(
     labels: list[int],
     probabilities: list[float],
     tumor_sizes: list[int],
+    tumor_area_mm2: list[float | None],
     threshold: float,
 ) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", newline="", encoding="utf-8") as file:
         writer = csv.DictWriter(
             file,
-            fieldnames=["image_path", "label", "probability", "prediction", "tumor_size_pixels"],
+            fieldnames=["image_path", "label", "probability", "prediction", "tumor_size_pixels", "tumor_area_mm2"],
         )
         writer.writeheader()
-        for image_path, label, probability, tumor_size in zip(image_paths, labels, probabilities, tumor_sizes):
+        for image_path, label, probability, tumor_size, area_mm2 in zip(
+            image_paths, labels, probabilities, tumor_sizes, tumor_area_mm2
+        ):
             writer.writerow(
                 {
                     "image_path": str(image_path),
@@ -300,6 +312,7 @@ def write_prediction_report(
                     "probability": probability,
                     "prediction": CLASS_NAMES[1 if probability >= threshold else 0],
                     "tumor_size_pixels": tumor_size,
+                    "tumor_area_mm2": area_mm2,
                 }
             )
 
@@ -369,7 +382,9 @@ def train(config: TrainConfig) -> dict[str, object]:
     checkpoint_path = output_dir / "best_ct_tumor_model.pt"
     for epoch in range(1, config.epochs + 1):
         train_loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
-        result = evaluate(model, test_loader, test_paths, device, config.threshold, config.tumor_area_threshold)
+        result = evaluate(
+            model, test_loader, test_paths, device, config.threshold, config.tumor_area_threshold, config.pixel_spacing_mm
+        )
         metrics = dict(result["metrics"])
         metrics["epoch"] = float(epoch)
         metrics["train_loss"] = train_loss
@@ -392,7 +407,9 @@ def train(config: TrainConfig) -> dict[str, object]:
 
     checkpoint = torch.load(checkpoint_path, map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
-    final_result = evaluate(model, test_loader, test_paths, device, config.threshold, config.tumor_area_threshold)
+    final_result = evaluate(
+        model, test_loader, test_paths, device, config.threshold, config.tumor_area_threshold, config.pixel_spacing_mm
+    )
     predictions_path = output_dir / "predictions.csv"
     write_prediction_report(
         predictions_path,
@@ -400,6 +417,7 @@ def train(config: TrainConfig) -> dict[str, object]:
         final_result["labels"],
         final_result["probabilities"],
         final_result["tumor_sizes"],
+        final_result["tumor_area_mm2"],
         config.threshold,
     )
     if config.plot:
@@ -432,6 +450,7 @@ def parse_args() -> TrainConfig:
     parser.add_argument("--validation-size", type=float, default=TrainConfig.validation_size)
     parser.add_argument("--threshold", type=float, default=TrainConfig.threshold)
     parser.add_argument("--tumor-area-threshold", type=int, default=TrainConfig.tumor_area_threshold)
+    parser.add_argument("--pixel-spacing-mm", type=float, default=TrainConfig.pixel_spacing_mm)
     parser.add_argument("--num-workers", type=int, default=TrainConfig.num_workers)
     parser.add_argument("--seed", type=int, default=TrainConfig.seed)
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default=TrainConfig.device)
@@ -452,6 +471,7 @@ def parse_args() -> TrainConfig:
         validation_size=float(config_values.get("validation_size", args.validation_size)),
         threshold=float(config_values.get("threshold", args.threshold)),
         tumor_area_threshold=int(config_values.get("tumor_area_threshold", args.tumor_area_threshold)),
+        pixel_spacing_mm=config_values.get("pixel_spacing_mm", args.pixel_spacing_mm),
         num_workers=int(config_values.get("num_workers", args.num_workers)),
         seed=int(config_values.get("seed", args.seed)),
         device=str(config_values.get("device", args.device)),
