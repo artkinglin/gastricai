@@ -19,6 +19,7 @@ from tqdm import tqdm
 
 from experiment_config import coerce_path, get_config_value, load_config_file
 from gastric_common import read_manifest, stratified_split
+from ct_segmentation import segment_threshold_area
 
 
 IMAGE_SIZE = 224
@@ -254,8 +255,7 @@ def estimate_tumor_size_pixels(image_path: Path, threshold: int = 127) -> int:
     image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
     if image is None:
         raise ValueError(f"Could not read image: {image_path}")
-    _, mask = cv2.threshold(image, threshold, 255, cv2.THRESH_BINARY)
-    return int(np.count_nonzero(mask))
+    return segment_threshold_area(image, threshold=threshold).pixel_count
 
 
 def evaluate(
