@@ -186,6 +186,17 @@ def tune_threshold(labels: list[int], probabilities: list[float]) -> tuple[float
     return best_threshold, best_metrics
 
 
+def threshold_sweep(labels: list[int], probabilities: list[float], steps: int = 101) -> list[dict[str, float]]:
+    if steps < 2:
+        raise ValueError("steps must be at least 2")
+    rows: list[dict[str, float]] = []
+    for index in range(steps):
+        threshold = index / (steps - 1)
+        metrics = compute_metrics(labels, probabilities, threshold=threshold)
+        rows.append({"threshold": threshold, **metrics})
+    return rows
+
+
 def write_json(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
@@ -198,6 +209,10 @@ def write_history_csv(path: Path, history: list[dict[str, float]]) -> None:
         writer = csv.DictWriter(file, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(history)
+
+
+def write_threshold_sweep_csv(path: Path, rows: list[dict[str, float]]) -> None:
+    write_history_csv(path, rows)
 
 
 def write_prediction_csv(
