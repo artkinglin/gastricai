@@ -1,6 +1,14 @@
 from pathlib import Path
 
-from gastric_common import compute_metrics, confusion_counts, discover_image_paths, read_manifest, stratified_split, tune_threshold
+from gastric_common import (
+    compute_metrics,
+    confusion_counts,
+    discover_image_paths,
+    read_manifest,
+    stratified_split,
+    threshold_sweep,
+    tune_threshold,
+)
 
 
 def _write_image(path: Path) -> None:
@@ -62,3 +70,9 @@ def test_manifest_reader_accepts_named_labels(tmp_path: Path) -> None:
 
     assert image_paths == [tmp_path / "case_001.png", tmp_path / "case_002.png"]
     assert labels == [0, 1]
+
+
+def test_threshold_sweep_includes_endpoints() -> None:
+    rows = threshold_sweep([0, 1], [0.25, 0.75], steps=3)
+
+    assert [row["threshold"] for row in rows] == [0.0, 0.5, 1.0]
