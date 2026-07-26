@@ -24,10 +24,12 @@ from gastric_common import (
     discover_image_paths,
     read_manifest,
     stratified_split,
+    threshold_sweep,
     tune_threshold,
     write_history_csv,
     write_json,
     write_prediction_csv,
+    write_threshold_sweep_csv,
 )
 
 
@@ -286,6 +288,7 @@ def train(config: TrainConfig) -> dict[str, float]:
 
     write_json(output_dir / "history.json", history)
     write_history_csv(output_dir / "history.csv", history)
+    write_threshold_sweep_csv(output_dir / "validation_threshold_sweep.csv", threshold_sweep(val_result["labels"], val_result["probabilities"]))
     if config.test_dir is not None:
         checkpoint = torch.load(checkpoint_path, map_location=device)
         model.load_state_dict(checkpoint["model_state_dict"])
@@ -306,6 +309,10 @@ def train(config: TrainConfig) -> dict[str, float]:
             test_result["labels"],
             test_result["probabilities"],
             threshold,
+        )
+        write_threshold_sweep_csv(
+            output_dir / "test_threshold_sweep.csv",
+            threshold_sweep(test_result["labels"], test_result["probabilities"]),
         )
     return best_metrics
 
