@@ -3,6 +3,7 @@ from pathlib import Path
 from gastric_common import (
     compute_metrics,
     confusion_counts,
+    calibration_bins,
     discover_image_paths,
     read_manifest,
     stratified_split,
@@ -76,3 +77,10 @@ def test_threshold_sweep_includes_endpoints() -> None:
     rows = threshold_sweep([0, 1], [0.25, 0.75], steps=3)
 
     assert [row["threshold"] for row in rows] == [0.0, 0.5, 1.0]
+
+
+def test_calibration_bins_count_predictions() -> None:
+    rows = calibration_bins([0, 1], [0.1, 0.9], bins=2)
+
+    assert rows[0]["count"] == 1.0
+    assert rows[1]["observed_positive_rate"] == 1.0
