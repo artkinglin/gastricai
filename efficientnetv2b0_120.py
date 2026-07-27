@@ -19,6 +19,7 @@ from torchvision import transforms
 from experiment_config import coerce_path, get_config_value, load_config_file
 from gastric_common import (
     CLASS_NAMES,
+    calibration_bins,
     compute_metrics,
     confusion_counts,
     discover_image_paths,
@@ -27,6 +28,7 @@ from gastric_common import (
     threshold_sweep,
     tune_threshold,
     write_history_csv,
+    write_calibration_csv,
     write_json,
     write_prediction_csv,
     write_threshold_sweep_csv,
@@ -288,6 +290,7 @@ def train(config: TrainConfig) -> dict[str, float]:
 
     write_json(output_dir / "history.json", history)
     write_history_csv(output_dir / "history.csv", history)
+    write_calibration_csv(output_dir / "validation_calibration.csv", calibration_bins(val_result["labels"], val_result["probabilities"]))
     write_threshold_sweep_csv(output_dir / "validation_threshold_sweep.csv", threshold_sweep(val_result["labels"], val_result["probabilities"]))
     if config.test_dir is not None:
         checkpoint = torch.load(checkpoint_path, map_location=device)
@@ -313,6 +316,10 @@ def train(config: TrainConfig) -> dict[str, float]:
         write_threshold_sweep_csv(
             output_dir / "test_threshold_sweep.csv",
             threshold_sweep(test_result["labels"], test_result["probabilities"]),
+        )
+        write_calibration_csv(
+            output_dir / "test_calibration.csv",
+            calibration_bins(test_result["labels"], test_result["probabilities"]),
         )
     return best_metrics
 
