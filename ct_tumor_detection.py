@@ -18,7 +18,7 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
 from experiment_config import coerce_path, get_config_value, load_config_file
-from gastric_common import read_manifest, stratified_split
+from gastric_common import threshold_sweep, read_manifest, stratified_split, write_threshold_sweep_csv
 from ct_segmentation import segment_threshold_area
 
 
@@ -430,6 +430,10 @@ def train(config: TrainConfig) -> dict[str, object]:
             final_result["tumor_sizes"],
             output_dir / "evaluation_histograms.png",
         )
+    write_threshold_sweep_csv(
+        output_dir / "threshold_sweep.csv",
+        threshold_sweep(final_result["labels"], final_result["probabilities"]),
+    )
 
     return {
         "checkpoint": str(checkpoint_path),
