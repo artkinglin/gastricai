@@ -197,6 +197,35 @@ def threshold_sweep(labels: list[int], probabilities: list[float], steps: int = 
     return rows
 
 
+def calibration_bins(labels: list[int], probabilities: list[float], bins: int = 10) -> list[dict[str, float]]:
+    if bins < 1:
+        raise ValueError("bins must be at least 1")
+    rows: list[dict[str, float]] = []
+    for index in range(bins):
+        lower = index / bins
+        upper = (index + 1) / bins
+        if index == bins - 1:
+            selected = [(label, probability) for label, probability in zip(labels, probabilities) if lower <= probability <= upper]
+        else:
+            selected = [(label, probability) for label, probability in zip(labels, probabilities) if lower <= probability < upper]
+        if selected:
+            observed = sum(label for label, _ in selected) / len(selected)
+            mean_probability = sum(probability for _, probability in selected) / len(selected)
+        else:
+            observed = 0.0
+            mean_probability = (lower + upper) / 2
+        rows.append(
+            {
+                "bin_lower": lower,
+                "bin_upper": upper,
+                "count": float(len(selected)),
+                "mean_probability": mean_probability,
+                "observed_positive_rate": observed,
+            }
+        )
+    return rows
+
+
 def write_json(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
@@ -212,6 +241,10 @@ def write_history_csv(path: Path, history: list[dict[str, float]]) -> None:
 
 
 def write_threshold_sweep_csv(path: Path, rows: list[dict[str, float]]) -> None:
+    write_history_csv(path, rows)
+
+
+def write_calibration_csv(path: Path, rows: list[dict[str, float]]) -> None:
     write_history_csv(path, rows)
 
 
