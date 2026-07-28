@@ -24,6 +24,7 @@ from gastric_common import (
     confusion_counts,
     discover_image_paths,
     read_manifest,
+    save_confusion_matrix_image,
     stratified_split,
     threshold_sweep,
     tune_threshold,
@@ -306,6 +307,7 @@ def train(config: TrainConfig) -> dict[str, float]:
         test_result = evaluate(model, test_loader, device, threshold=threshold)
         write_json(output_dir / "test_metrics.json", test_result["metrics"])
         write_json(output_dir / "test_confusion_matrix.json", test_result["confusion_matrix"])
+        save_confusion_matrix_image(output_dir / "test_confusion_matrix.png", test_result["confusion_matrix"])
         write_prediction_csv(
             output_dir / "test_predictions.csv",
             test_paths,
