@@ -269,3 +269,25 @@ def write_prediction_csv(
                     "prediction": class_names[1 if probability >= threshold else 0],
                 }
             )
+
+
+def save_confusion_matrix_image(path: Path, counts: dict[str, int], class_names: tuple[str, str] = CLASS_NAMES) -> None:
+    import matplotlib.pyplot as plt
+
+    matrix = [
+        [counts.get("true_negative", 0), counts.get("false_positive", 0)],
+        [counts.get("false_negative", 0), counts.get("true_positive", 0)],
+    ]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    figure, axis = plt.subplots(figsize=(4, 4))
+    axis.imshow(matrix, cmap="Blues")
+    axis.set_xticks([0, 1], labels=class_names)
+    axis.set_yticks([0, 1], labels=class_names)
+    axis.set_xlabel("Predicted")
+    axis.set_ylabel("Actual")
+    for row_index, row in enumerate(matrix):
+        for column_index, value in enumerate(row):
+            axis.text(column_index, row_index, str(value), ha="center", va="center", color="black")
+    figure.tight_layout()
+    figure.savefig(path)
+    plt.close(figure)
