@@ -20,7 +20,9 @@ from tqdm import tqdm
 from experiment_config import coerce_path, get_config_value, load_config_file
 from gastric_common import (
     calibration_bins,
+    confusion_counts,
     read_manifest,
+    save_confusion_matrix_image,
     stratified_split,
     threshold_sweep,
     write_calibration_csv,
@@ -285,12 +287,14 @@ def evaluate(
 ) -> dict[str, object]:
     probabilities, labels = predict_probabilities(model, dataloader, device)
     metrics = compute_metrics(labels, probabilities, threshold=threshold)
+    confusion = confusion_counts(labels, probabilities, threshold=threshold)
     tumor_areas = [estimate_tumor_area(path, threshold=tumor_area_threshold, pixel_spacing_mm=pixel_spacing_mm) for path in image_paths]
     tumor_sizes = [area[0] for area in tumor_areas]
     tumor_area_mm2 = [area[1] for area in tumor_areas]
     return {
         "labels": labels,
         "metrics": metrics,
+        "confusion_matrix": confusion,
         "probabilities": probabilities,
         "tumor_area_mm2": tumor_area_mm2,
         "tumor_sizes": tumor_sizes,
@@ -445,6 +449,7 @@ def train(config: TrainConfig) -> dict[str, object]:
         output_dir / "calibration.csv",
         calibration_bins(final_result["labels"], final_result["probabilities"]),
     )
+    save_confusion_matrix_image(output_dir / "confusion_matrix.png", final_result["confusion_matrix"], CLASS_NAMES)
 
     return {
         "checkpoint": str(checkpoint_path),
