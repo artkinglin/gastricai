@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
+import logging
 import random
 from pathlib import Path
 from typing import Iterable
@@ -15,6 +16,10 @@ LABEL_ALIASES = {
     "malignant": ("malignant", "abnormal", "tumor", "positive"),
 }
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp"}
+
+
+def log_event(logger: logging.Logger, event: str, **fields: object) -> None:
+    logger.info(json.dumps({"event": event, **fields}, sort_keys=True))
 
 
 def parse_label(value: str, class_names: tuple[str, str] = CLASS_NAMES) -> int:
