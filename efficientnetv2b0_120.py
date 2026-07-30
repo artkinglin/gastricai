@@ -49,6 +49,7 @@ class TrainConfig:
     test_manifest: Path | None = None
     output_dir: Path = Path("runs/efficientnetv2b0_120")
     run_name: str | None = None
+    resume_checkpoint: Path | None = None
     batch_size: int = 32
     epochs: int = 25
     learning_rate: float = 3e-4
@@ -244,6 +245,9 @@ def train(config: TrainConfig) -> dict[str, float]:
     )
 
     model = build_model(pretrained=config.pretrained).to(device)
+    if config.resume_checkpoint is not None:
+        checkpoint = torch.load(config.resume_checkpoint, map_location=device)
+        model.load_state_dict(checkpoint["model_state_dict"])
     criterion = nn.CrossEntropyLoss(weight=class_weights(train_labels, device))
     optimizer = torch.optim.AdamW(
         model.parameters(),
@@ -335,6 +339,7 @@ def parse_args() -> TrainConfig:
     parser.add_argument("--test-manifest", type=Path, default=TrainConfig.test_manifest)
     parser.add_argument("--output-dir", type=Path, default=TrainConfig.output_dir)
     parser.add_argument("--run-name", type=str, default=TrainConfig.run_name)
+    parser.add_argument("--resume-checkpoint", type=Path, default=TrainConfig.resume_checkpoint)
     parser.add_argument("--batch-size", type=int, default=TrainConfig.batch_size)
     parser.add_argument("--epochs", type=int, default=TrainConfig.epochs)
     parser.add_argument("--learning-rate", type=float, default=TrainConfig.learning_rate)
@@ -353,6 +358,7 @@ def parse_args() -> TrainConfig:
         test_manifest=coerce_path(config_values.get("test_manifest", args.test_manifest)),
         output_dir=coerce_path(config_values.get("output_dir", args.output_dir)) or args.output_dir,
         run_name=config_values.get("run_name", args.run_name),
+        resume_checkpoint=coerce_path(config_values.get("resume_checkpoint", args.resume_checkpoint)),
         batch_size=int(config_values.get("batch_size", args.batch_size)),
         epochs=int(config_values.get("epochs", args.epochs)),
         learning_rate=float(config_values.get("learning_rate", args.learning_rate)),
