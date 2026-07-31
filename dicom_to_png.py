@@ -11,6 +11,8 @@ from pathlib import Path
 import numpy as np
 from tqdm import tqdm
 
+from gastric_common import log_event
+
 
 LOGGER = logging.getLogger("dicom_to_png")
 
@@ -117,7 +119,7 @@ def convert_directory(config: ConvertConfig) -> list[dict[str, object]]:
 
     metadata_csv = config.metadata_csv or config.output_dir / "conversion_metadata.csv"
     write_metadata(metadata_csv, records)
-    LOGGER.info("Wrote metadata to %s", metadata_csv)
+    log_event(LOGGER, "dicom_metadata_written", path=str(metadata_csv), records=len(records))
     return records
 
 
@@ -145,4 +147,4 @@ if __name__ == "__main__":
     converted = sum(1 for record in records if record["status"] == "converted")
     skipped = sum(1 for record in records if record["status"] == "skipped")
     failed = sum(1 for record in records if record["status"] == "failed")
-    LOGGER.info("Converted=%s skipped=%s failed=%s", converted, skipped, failed)
+    log_event(LOGGER, "dicom_conversion_complete", converted=converted, skipped=skipped, failed=failed)
