@@ -6,6 +6,7 @@ import argparse
 from dataclasses import dataclass
 from pathlib import Path
 import json
+import logging
 import random
 
 import numpy as np
@@ -23,6 +24,7 @@ from gastric_common import (
     compute_metrics,
     confusion_counts,
     discover_image_paths,
+    log_event,
     read_manifest,
     save_confusion_matrix_image,
     stratified_split,
@@ -36,6 +38,7 @@ from gastric_common import (
 )
 
 
+LOGGER = logging.getLogger("efficientnetv2b0_120")
 IMAGE_SIZE = 120
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
@@ -272,6 +275,7 @@ def train(config: TrainConfig) -> dict[str, float]:
         metrics["train_loss"] = train_loss
         metrics["epoch"] = float(epoch)
         history.append(metrics)
+        log_event(LOGGER, "efficientnet_epoch", **metrics)
         print(json.dumps(metrics, sort_keys=True))
 
         if metrics["f1"] > best_metrics["f1"]:
@@ -372,5 +376,6 @@ def parse_args() -> TrainConfig:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     final_metrics = train(parse_args())
     print("best_metrics=" + json.dumps(final_metrics, sort_keys=True))
