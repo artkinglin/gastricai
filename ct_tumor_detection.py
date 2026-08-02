@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import logging
 import random
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,6 +22,7 @@ from experiment_config import coerce_path, get_config_value, load_config_file
 from gastric_common import (
     calibration_bins,
     confusion_counts,
+    log_event,
     read_manifest,
     save_confusion_matrix_image,
     stratified_split,
@@ -38,6 +40,7 @@ LABEL_ALIASES = {
     "tumor": ("tumor", "positive", "malignant", "abnormal"),
 }
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp"}
+LOGGER = logging.getLogger("ct_tumor_detection")
 
 
 @dataclass(frozen=True)
@@ -408,6 +411,7 @@ def train(config: TrainConfig) -> dict[str, object]:
         metrics["epoch"] = float(epoch)
         metrics["train_loss"] = train_loss
         history.append(metrics)
+        log_event(LOGGER, "ct_epoch", **metrics)
         print(json.dumps(metrics, sort_keys=True))
 
         if metrics["f1"] > best_f1:
@@ -511,5 +515,6 @@ def parse_args() -> TrainConfig:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     final_result = train(parse_args())
     print("final_result=" + json.dumps(final_result, sort_keys=True))
