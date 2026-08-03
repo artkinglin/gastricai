@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from dicom_to_png import apply_rescale, output_path_for, window_to_uint8
+from dicom_to_png import apply_rescale, output_path_for, safe_metadata, window_to_uint8
 
 
 def test_output_path_preserves_nested_structure() -> None:
@@ -29,3 +29,14 @@ def test_window_to_uint8_clips_to_window() -> None:
     png = window_to_uint8(image, dataset)
 
     assert png.tolist() == [[0, 127, 255]]
+
+
+def test_safe_metadata_excludes_patient_identity() -> None:
+    dataset = SimpleNamespace(PatientName="Jane Doe", PatientID="123", Modality="CT", Rows=2, Columns=3)
+
+    metadata = safe_metadata(dataset)
+
+    assert metadata["modality"] == "CT"
+    assert metadata["rows"] == 2
+    assert "PatientName" not in metadata
+    assert "PatientID" not in metadata
