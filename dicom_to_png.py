@@ -72,6 +72,20 @@ def output_path_for(dicom_path: Path, input_dir: Path, output_dir: Path) -> Path
     return output_dir / relative_path.with_suffix(".png")
 
 
+def safe_metadata(dataset: object) -> dict[str, object]:
+    return {
+        "modality": getattr(dataset, "Modality", ""),
+        "study_uid": getattr(dataset, "StudyInstanceUID", ""),
+        "series_uid": getattr(dataset, "SeriesInstanceUID", ""),
+        "sop_uid": getattr(dataset, "SOPInstanceUID", ""),
+        "instance_number": getattr(dataset, "InstanceNumber", ""),
+        "rows": getattr(dataset, "Rows", ""),
+        "columns": getattr(dataset, "Columns", ""),
+        "slice_thickness": getattr(dataset, "SliceThickness", ""),
+        "pixel_spacing": "\\".join(str(value) for value in getattr(dataset, "PixelSpacing", [])),
+    }
+
+
 def convert_one(dicom_path: Path, output_path: Path, overwrite: bool = False) -> dict[str, object]:
     if output_path.exists() and not overwrite:
         return {"input": str(dicom_path), "output": str(output_path), "status": "skipped"}
@@ -81,6 +95,7 @@ def convert_one(dicom_path: Path, output_path: Path, overwrite: bool = False) ->
         import pydicom
 
         dataset = pydicom.dcmread(dicom_path)
+        metadata = safe_metadata(dataset)
         image = apply_rescale(dataset.pixel_array, dataset)
         png = window_to_uint8(image, dataset)
     except Exception as exc:
@@ -97,6 +112,7 @@ def convert_one(dicom_path: Path, output_path: Path, overwrite: bool = False) ->
         "status": "converted",
         "rows": int(png.shape[0]),
         "columns": int(png.shape[1]),
+        **metadata,
     }
 
 
