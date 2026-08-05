@@ -2,6 +2,9 @@
 
 Python tools for gastric image classification and CT/DICOM preprocessing.
 
+This is research/prototype software only. It is not a medical device and must
+not be used for diagnosis, triage, treatment planning, or patient care.
+
 ## Environment
 
 Use Python 3.11 or 3.12. The ML stack in this project depends on PyTorch, TorchVision, OpenCV, scikit-learn, and pydicom; these packages are more reliable on currently supported Python versions than on very new interpreter releases.
