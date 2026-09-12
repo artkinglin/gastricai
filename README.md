@@ -41,11 +41,15 @@ data/GasHisSDB/120/Normal
 data/GasHisSDB/120/Abnormal
 ```
 
-Then run:
+Then run the default EfficientNetV2-B0 feature extractor + CatBoost classifier
+workflow with t-SNE and Grad-CAM artifacts:
 
 ```powershell
-python efficientnetv2b0_120.py --data-dir data/GasHisSDB/120 --epochs 25
+python efficientnetv2b0_120.py --data-dir data/GasHisSDB/120
 ```
+
+Use `--mode finetune --epochs 25` to train the EfficientNet classifier head
+directly before generating stronger class-specific Grad-CAM overlays.
 
 Use an external test set when available:
 
@@ -53,9 +57,11 @@ Use an external test set when available:
 python efficientnetv2b0_120.py --data-dir data/GasHisSDB/120 --test-dir data/GasHisSDB/test
 ```
 
-The EfficientNet workflow writes `best_model.pt`, `history.json`,
-`history.csv`, threshold-tuned validation metrics, and optional external test
-reports under `runs/efficientnetv2b0_120/`.
+The hybrid workflow writes `catboost_model.cbm`, `hybrid_metrics.json`,
+`train_features.npy`, `val_features.npy`, `tsne_features.png`, and Grad-CAM
+overlays under `runs/efficientnetv2b0_120/`. Fine-tuning writes
+`best_model.pt`, `history.json`, `history.csv`, threshold-tuned validation
+metrics, and optional external test reports under the same run directory.
 
 Run inference from a saved checkpoint:
 
