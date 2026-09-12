@@ -1,4 +1,4 @@
-"""Train and evaluate EfficientNetV2-B0 on 120px gastric histology images."""
+"""Train and evaluate EfficientNetV2-B0 pipelines on gastric histology images."""
 
 from __future__ import annotations
 
@@ -8,14 +8,15 @@ from pathlib import Path
 import json
 import logging
 import random
+from typing import Sequence
 
 import numpy as np
 import torch
 from torch import nn
+import torch.nn.functional as F
 from PIL import Image
+from sklearn.manifold import TSNE
 from torch.utils.data import DataLoader, Dataset
-from torchvision import models
-from torchvision import transforms
 
 from experiment_config import coerce_path, get_config_value, load_config_file
 from gastric_common import (
@@ -46,6 +47,7 @@ IMAGENET_STD = (0.229, 0.224, 0.225)
 
 @dataclass(frozen=True)
 class TrainConfig:
+    mode: str = "hybrid"
     data_dir: Path = Path("data/GasHisSDB/120")
     manifest: Path | None = None
     test_dir: Path | None = None
@@ -62,9 +64,17 @@ class TrainConfig:
     num_workers: int = 2
     early_stopping_patience: int = 5
     pretrained: bool = True
+    catboost_iterations: int = 500
+    catboost_learning_rate: float = 0.03
+    catboost_depth: int = 6
+    tsne_perplexity: float = 30.0
+    grad_cam_samples: int = 8
+    checkpoint: Path | None = None
 
 
 def validate_config(config: TrainConfig) -> None:
+    if config.mode not in {"hybrid", "finetune"}:
+        raise ValueError("mode must be 'hybrid' or 'finetune'")
     if config.batch_size < 1:
         raise ValueError("batch_size must be at least 1")
     if config.epochs < 1:
@@ -79,6 +89,16 @@ def validate_config(config: TrainConfig) -> None:
         raise ValueError("num_workers cannot be negative")
     if config.early_stopping_patience < 1:
         raise ValueError("early_stopping_patience must be at least 1")
+    if config.catboost_iterations < 1:
+        raise ValueError("catboost_iterations must be at least 1")
+    if config.catboost_learning_rate <= 0:
+        raise ValueError("catboost_learning_rate must be positive")
+    if config.catboost_depth < 1:
+        raise ValueError("catboost_depth must be at least 1")
+    if config.tsne_perplexity <= 0:
+        raise ValueError("tsne_perplexity must be positive")
+    if config.grad_cam_samples < 0:
+        raise ValueError("grad_cam_samples cannot be negative")
 
 
 def seed_everything(seed: int) -> None:
@@ -109,7 +129,15 @@ class GastricImageDataset(Dataset):
         return image, label
 
 
-def build_transforms(train: bool) -> transforms.Compose:
+def build_transforms(train: bool):
+    try:
+        from torchvision import transforms
+    except ImportError as exc:
+        raise ImportError(
+            "torchvision is required to build image transforms. Install dependencies with "
+            "`pip install -r requirements.txt`."
+        ) from exc
+
     if train:
         return transforms.Compose(
             [
@@ -133,6 +161,14 @@ def build_transforms(train: bool) -> transforms.Compose:
 
 
 def build_model(pretrained: bool = True) -> nn.Module:
+    try:
+        from torchvision import models
+    except ImportError as exc:
+        raise ImportError(
+            "torchvision is required to build EfficientNetV2-B0. Install dependencies with "
+            "`pip install -r requirements.txt`."
+        ) from exc
+
     weights = models.EfficientNet_V2_B0_Weights.DEFAULT if pretrained else None
     model = models.efficientnet_v2_b0(weights=weights)
     in_features = model.classifier[1].in_features
@@ -141,6 +177,19 @@ def build_model(pretrained: bool = True) -> nn.Module:
         nn.Linear(in_features, len(CLASS_NAMES)),
     )
     return model
+
+
+def load_checkpoint(model: nn.Module, checkpoint_path: Path, device: torch.device) -> nn.Module:
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+    state_dict = checkpoint.get("model_state_dict", checkpoint)
+    model.load_state_dict(state_dict)
+    return model
+
+
+def forward_features(model: nn.Module, images: torch.Tensor) -> torch.Tensor:
+    x = model.features(images)
+    x = model.avgpool(x)
+    return torch.flatten(x, 1)
 
 
 def class_weights(labels: list[int], device: torch.device) -> torch.Tensor:
@@ -210,7 +259,7 @@ def make_loader(
     image_paths: list[Path],
     labels: list[int],
     batch_size: int,
-    transform: transforms.Compose,
+    transform,
     shuffle: bool,
     num_workers: int,
 ) -> DataLoader:
@@ -221,6 +270,185 @@ def make_loader(
         num_workers=num_workers,
         pin_memory=torch.cuda.is_available(),
     )
+
+
+def compute_metrics_with_confusion(
+    labels: Sequence[int],
+    probabilities: Sequence[float],
+    threshold: float = 0.5,
+) -> dict[str, object]:
+    metrics = compute_metrics(list(labels), list(probabilities), threshold=threshold)
+    metrics["confusion_matrix"] = confusion_counts(labels, probabilities, threshold=threshold)
+    return metrics
+
+
+@torch.no_grad()
+def extract_deep_features(
+    model: nn.Module,
+    loader: DataLoader,
+    device: torch.device,
+) -> tuple[np.ndarray, np.ndarray, list[Path]]:
+    model.eval()
+    features: list[np.ndarray] = []
+    labels: list[np.ndarray] = []
+    paths: list[Path] = []
+
+    dataset = loader.dataset
+    dataset_paths = getattr(dataset, "image_paths", None)
+    offset = 0
+
+    for images, targets in loader:
+        images = images.to(device)
+        batch_features = forward_features(model, images)
+        features.append(batch_features.cpu().numpy())
+        labels.append(targets.numpy())
+        if dataset_paths is not None:
+            paths.extend(dataset_paths[offset : offset + len(targets)])
+        offset += len(targets)
+
+    return np.vstack(features), np.concatenate(labels), paths
+
+
+def train_catboost_classifier(
+    train_features: np.ndarray,
+    train_labels: np.ndarray,
+    config: TrainConfig,
+):
+    try:
+        from catboost import CatBoostClassifier
+    except ImportError as exc:
+        raise ImportError(
+            "CatBoost is required for the hybrid pipeline. Install dependencies with "
+            "`pip install -r requirements.txt`."
+        ) from exc
+
+    classifier = CatBoostClassifier(
+        iterations=config.catboost_iterations,
+        learning_rate=config.catboost_learning_rate,
+        depth=config.catboost_depth,
+        loss_function="Logloss",
+        eval_metric="F1",
+        random_seed=config.seed,
+        verbose=False,
+        allow_writing_files=False,
+    )
+    classifier.fit(train_features, train_labels)
+    return classifier
+
+
+def save_tsne_plot(
+    features: np.ndarray,
+    labels: np.ndarray,
+    output_path: Path,
+    perplexity: float,
+    seed: int,
+) -> None:
+    import matplotlib.pyplot as plt
+
+    if len(features) < 3:
+        return
+
+    effective_perplexity = min(perplexity, max(1.0, (len(features) - 1) / 3))
+    embeddings = TSNE(
+        n_components=2,
+        perplexity=effective_perplexity,
+        init="pca",
+        learning_rate="auto",
+        random_state=seed,
+    ).fit_transform(features)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.figure(figsize=(7, 6))
+    for class_index, class_name in enumerate(CLASS_NAMES):
+        mask = labels == class_index
+        plt.scatter(
+            embeddings[mask, 0],
+            embeddings[mask, 1],
+            s=18,
+            alpha=0.78,
+            label=class_name,
+        )
+    plt.title("t-SNE of EfficientNetV2-B0 Features")
+    plt.xlabel("t-SNE 1")
+    plt.ylabel("t-SNE 2")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=160)
+    plt.close()
+
+
+def denormalize_image(image: torch.Tensor) -> np.ndarray:
+    mean = torch.tensor(IMAGENET_MEAN, dtype=image.dtype, device=image.device).view(3, 1, 1)
+    std = torch.tensor(IMAGENET_STD, dtype=image.dtype, device=image.device).view(3, 1, 1)
+    image = image * std + mean
+    image = image.clamp(0, 1).permute(1, 2, 0)
+    return image.cpu().numpy()
+
+
+def make_grad_cam_overlay(
+    model: nn.Module,
+    image: torch.Tensor,
+    target_class: int,
+    device: torch.device,
+) -> np.ndarray:
+    activations: list[torch.Tensor] = []
+    gradients: list[torch.Tensor] = []
+    target_layer = model.features[-1]
+
+    def save_activation(_module, _inputs, output):
+        activations.append(output)
+
+    def save_gradient(_module, _grad_inputs, grad_outputs):
+        gradients.append(grad_outputs[0])
+
+    forward_handle = target_layer.register_forward_hook(save_activation)
+    backward_handle = target_layer.register_full_backward_hook(save_gradient)
+
+    try:
+        model.eval()
+        model.zero_grad(set_to_none=True)
+        batch = image.unsqueeze(0).to(device)
+        logits = model(batch)
+        score = logits[:, target_class].sum()
+        score.backward()
+
+        weights = gradients[-1].mean(dim=(2, 3), keepdim=True)
+        cam = (weights * activations[-1]).sum(dim=1, keepdim=True)
+        cam = F.relu(cam)
+        cam = F.interpolate(cam, size=image.shape[-2:], mode="bilinear", align_corners=False)
+        cam = cam.squeeze()
+        cam = (cam - cam.min()) / (cam.max() - cam.min()).clamp_min(1e-8)
+    finally:
+        forward_handle.remove()
+        backward_handle.remove()
+
+    base = denormalize_image(image)
+    heat = cam.detach().cpu().numpy()
+    heat_rgb = np.zeros_like(base)
+    heat_rgb[..., 0] = heat
+    heat_rgb[..., 1] = np.clip(1.0 - np.abs(heat - 0.5) * 2.0, 0.0, 1.0)
+    return np.clip((0.58 * base) + (0.42 * heat_rgb), 0.0, 1.0)
+
+
+def save_grad_cam_examples(
+    model: nn.Module,
+    dataset: GastricImageDataset,
+    output_dir: Path,
+    device: torch.device,
+    sample_count: int,
+) -> None:
+    if sample_count <= 0:
+        return
+
+    import matplotlib.pyplot as plt
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for index in range(min(sample_count, len(dataset))):
+        image, label = dataset[index]
+        overlay = make_grad_cam_overlay(model, image, int(label.item()), device)
+        image_name = dataset.image_paths[index].stem
+        output_path = output_dir / f"{index:03d}_{image_name}_{CLASS_NAMES[int(label.item())]}.png"
+        plt.imsave(output_path, overlay)
 
 
 def train(config: TrainConfig) -> dict[str, float]:
@@ -334,9 +562,114 @@ def train(config: TrainConfig) -> dict[str, float]:
     return best_metrics
 
 
+def run_hybrid_pipeline(config: TrainConfig) -> dict[str, object]:
+    validate_config(config)
+    seed_everything(config.seed)
+    output_dir = config.output_dir / config.run_name if config.run_name else config.output_dir
+    output_dir.mkdir(parents=True, exist_ok=True)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    image_paths, labels = (
+        read_manifest(config.manifest, root_dir=config.data_dir) if config.manifest else discover_image_paths(config.data_dir)
+    )
+    train_paths, val_paths, train_labels, val_labels = stratified_split(
+        image_paths,
+        labels,
+        config.validation_size,
+        config.seed,
+    )
+
+    train_dataset = GastricImageDataset(train_paths, train_labels, build_transforms(train=False))
+    val_dataset = GastricImageDataset(val_paths, val_labels, build_transforms(train=False))
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=config.batch_size,
+        shuffle=False,
+        num_workers=config.num_workers,
+        pin_memory=torch.cuda.is_available(),
+    )
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=config.batch_size,
+        shuffle=False,
+        num_workers=config.num_workers,
+        pin_memory=torch.cuda.is_available(),
+    )
+
+    model = build_model(pretrained=config.pretrained).to(device)
+    checkpoint_path = config.checkpoint or config.resume_checkpoint
+    if checkpoint_path is not None:
+        model = load_checkpoint(model, checkpoint_path, device)
+    elif config.grad_cam_samples > 0:
+        print(
+            "warning=Grad-CAM examples use the EfficientNet classifier head. "
+            "Pass --checkpoint from a fine-tuned EfficientNet run for class-specific heatmaps."
+        )
+
+    train_features, train_targets, train_feature_paths = extract_deep_features(model, train_loader, device)
+    val_features, val_targets, val_feature_paths = extract_deep_features(model, val_loader, device)
+
+    np.save(output_dir / "train_features.npy", train_features)
+    np.save(output_dir / "train_labels.npy", train_targets)
+    np.save(output_dir / "val_features.npy", val_features)
+    np.save(output_dir / "val_labels.npy", val_targets)
+    (output_dir / "train_paths.txt").write_text(
+        "\n".join(str(path) for path in train_feature_paths),
+        encoding="utf-8",
+    )
+    (output_dir / "val_paths.txt").write_text(
+        "\n".join(str(path) for path in val_feature_paths),
+        encoding="utf-8",
+    )
+
+    classifier = train_catboost_classifier(train_features, train_targets, config)
+    probabilities = classifier.predict_proba(val_features)[:, 1].tolist()
+    metrics = compute_metrics_with_confusion(val_targets.tolist(), probabilities)
+    classifier.save_model(str(output_dir / "catboost_model.cbm"))
+
+    all_features = np.vstack([train_features, val_features])
+    all_labels = np.concatenate([train_targets, val_targets])
+    save_tsne_plot(
+        all_features,
+        all_labels,
+        output_dir / "tsne_features.png",
+        config.tsne_perplexity,
+        config.seed,
+    )
+    save_grad_cam_examples(
+        model,
+        val_dataset,
+        output_dir / "grad_cam",
+        device,
+        config.grad_cam_samples,
+    )
+
+    artifact_summary = {
+        "metrics": metrics,
+        "class_names": CLASS_NAMES,
+        "artifacts": {
+            "catboost_model": str(output_dir / "catboost_model.cbm"),
+            "tsne": str(output_dir / "tsne_features.png"),
+            "grad_cam_dir": str(output_dir / "grad_cam"),
+            "train_features": str(output_dir / "train_features.npy"),
+            "val_features": str(output_dir / "val_features.npy"),
+        },
+    }
+    write_json(output_dir / "hybrid_metrics.json", artifact_summary)
+    log_event(LOGGER, "efficientnet_catboost_complete", **metrics)
+    print(json.dumps(artifact_summary, sort_keys=True))
+    return artifact_summary
+
+
 def parse_args() -> TrainConfig:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=None)
+    parser.add_argument(
+        "--mode",
+        choices=("hybrid", "finetune"),
+        default=TrainConfig.mode,
+        help="Use `hybrid` for EfficientNetV2-B0 features + CatBoost, or `finetune` for end-to-end EfficientNet.",
+    )
     parser.add_argument("--data-dir", type=Path, default=TrainConfig.data_dir)
     parser.add_argument("--manifest", type=Path, default=TrainConfig.manifest)
     parser.add_argument("--test-dir", type=Path, default=TrainConfig.test_dir)
@@ -353,9 +686,16 @@ def parse_args() -> TrainConfig:
     parser.add_argument("--num-workers", type=int, default=TrainConfig.num_workers)
     parser.add_argument("--early-stopping-patience", type=int, default=TrainConfig.early_stopping_patience)
     parser.add_argument("--no-pretrained", action="store_true")
+    parser.add_argument("--catboost-iterations", type=int, default=TrainConfig.catboost_iterations)
+    parser.add_argument("--catboost-learning-rate", type=float, default=TrainConfig.catboost_learning_rate)
+    parser.add_argument("--catboost-depth", type=int, default=TrainConfig.catboost_depth)
+    parser.add_argument("--tsne-perplexity", type=float, default=TrainConfig.tsne_perplexity)
+    parser.add_argument("--grad-cam-samples", type=int, default=TrainConfig.grad_cam_samples)
+    parser.add_argument("--checkpoint", type=Path, default=TrainConfig.checkpoint)
     args = parser.parse_args()
     config_values = load_config_file(args.config)
     return TrainConfig(
+        mode=str(config_values.get("mode", args.mode)),
         data_dir=coerce_path(config_values.get("data_dir", args.data_dir)) or args.data_dir,
         manifest=coerce_path(config_values.get("manifest", args.manifest)),
         test_dir=coerce_path(get_config_value(config_values, "test_dir", args.test_dir)),
@@ -372,10 +712,20 @@ def parse_args() -> TrainConfig:
         num_workers=int(config_values.get("num_workers", args.num_workers)),
         early_stopping_patience=int(config_values.get("early_stopping_patience", args.early_stopping_patience)),
         pretrained=bool(config_values.get("pretrained", not args.no_pretrained)),
+        catboost_iterations=int(config_values.get("catboost_iterations", args.catboost_iterations)),
+        catboost_learning_rate=float(config_values.get("catboost_learning_rate", args.catboost_learning_rate)),
+        catboost_depth=int(config_values.get("catboost_depth", args.catboost_depth)),
+        tsne_perplexity=float(config_values.get("tsne_perplexity", args.tsne_perplexity)),
+        grad_cam_samples=int(config_values.get("grad_cam_samples", args.grad_cam_samples)),
+        checkpoint=coerce_path(config_values.get("checkpoint", args.checkpoint)),
     )
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    final_metrics = train(parse_args())
-    print("best_metrics=" + json.dumps(final_metrics, sort_keys=True))
+    config = parse_args()
+    if config.mode == "finetune":
+        final_metrics = train(config)
+        print("best_metrics=" + json.dumps(final_metrics, sort_keys=True))
+    else:
+        run_hybrid_pipeline(config)
