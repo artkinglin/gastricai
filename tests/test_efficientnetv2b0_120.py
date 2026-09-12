@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from efficientnetv2b0_120 import TrainConfig, compute_metrics_with_confusion
 from gastric_common import (
     compute_metrics,
     confusion_counts,
@@ -84,3 +85,18 @@ def test_calibration_bins_count_predictions() -> None:
 
     assert rows[0]["count"] == 1.0
     assert rows[1]["observed_positive_rate"] == 1.0
+
+
+def test_metrics_include_confusion_matrix() -> None:
+    metrics = compute_metrics_with_confusion([0, 0, 1, 1], [0.7, 0.2, 0.8, 0.3], threshold=0.5)
+
+    assert metrics["confusion_matrix"] == {
+        "true_negative": 1,
+        "false_positive": 1,
+        "false_negative": 1,
+        "true_positive": 1,
+    }
+
+
+def test_default_mode_is_hybrid_pipeline() -> None:
+    assert TrainConfig().mode == "hybrid"
